@@ -51,3 +51,9 @@ Branch `baseline/fable-1`:
 - `.gitignore`: added ERiC, certificate, database, ELSTER payload and model patterns.
 - `.env.example`: placeholders in place of the upstream example Steuernummer / Hersteller-ID;
   documented `ERIC_LIBRARY_PATH` and `FINAMT_ALLOW_LIVE_SUBMISSION`.
+
+### EÜR ELSTER boundary
+- `src/finamt/tax/eur_elster.py` (new): `build_xml` (raises `NotImplementedError` until the
+  Kennzahlen are verified, see `docs/TODO.md`), `validate` (offline structural check),
+  `submit(xml, mode="dry_run"|"test")`. Test mode requires the Testmerker in the XML and reads
+  the ERiC directory from `ERIC_LIBRARY_PATH` only. `mode="live"` raises `NotImplementedError`.
