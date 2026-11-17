@@ -39,4 +39,5 @@ Branch `baseline/fable-1`:
   source. The bundle was **not** edited. It already hides KSt, GewSt and Jahresabschluss when
   the taxpayer Rechtsform is "Freiberuflich". If they are shown anyway, their backend routes
   now return 404.
-- `pyproject.toml`: ruff excludes `legacy/`.
+- `pyproject.toml`: removed the `arelle-release` dev dependency (only used by
+  `validate_xbrl.py`); `uv.lock` updated. Ruff excludes `legacy/`.
