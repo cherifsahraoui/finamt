@@ -57,3 +57,18 @@ Branch `baseline/fable-1`:
   Kennzahlen are verified, see `docs/TODO.md`), `validate` (offline structural check),
   `submit(xml, mode="dry_run"|"test")`. Test mode requires the Testmerker in the XML and reads
   the ERiC directory from `ERIC_LIBRARY_PATH` only. `mode="live"` raises `NotImplementedError`.
+
+### Tests
+- Added `tests/unit/test_safety.py`, `tests/unit/test_eur_elster.py`,
+  `tests/unit/test_decimal_rule.py` (no `float` in `src/finamt/tax/`) and
+  `tests/unit/test_eur_edge_cases.py`. No existing test was changed or removed except the moves
+  listed under "Scope cut".
+
+### Style
+- `src/finamt/ui/api.py`: one line reformatted by `ruff format` (no behaviour change).
+
+### Documentation
+- New: `AGENTS.md`, `NOTICE.md`, `docs/BASELINE.md`, `docs/tax-rules.md`, `docs/TODO.md`,
+  `legacy/README.md`.
+- `README.md`: fork notice; TODO section rewritten for the fork's scope; E-Bilanz removed from
+  the feature list. `readme/README_de.md` is unchanged.

@@ -23,13 +23,15 @@
 
 An agentic Python library for extracting structured data from receipts and invoices and preparing essential German tax return statements.
 
+> **Fork notice**: this is a fork of [spaceoctahedron/finamt](https://github.com/spaceoctahedron/finamt), scoped to UStVA, USt and EÜR for a single Freiberufler. See [NOTICE.md](NOTICE.md) for changes and [AGENTS.md](AGENTS.md) for contributor rules.
+
 ## Features
 
 - **German Tax Alignment** — Category taxonomy and VAT handling aligned with German fiscal practice
 - **Local-First** — Everything runs completely offline; models are auto-downloaded from HuggingFace and cached locally, data is stored in a local database
 - **4-Agent Pipeline** — Sequential specialised agents for metadata, counterparty, amounts, and line items; short focused prompts for reliable local model performance
 - **Web UI** — Full browser interface for uploading, reviewing, editing, and managing receipts and invoices and preparing tax returns
-- **ELSTER submission** — Annual Umsatzsteuererklärung (USt), E-Bilanz, and UStVA submitted directly to the Finanzamt via the official ERiC library; confirmed working end-to-end with a formal Finanzamt acknowledgement
+- **ELSTER submission** — Annual Umsatzsteuererklärung (USt) and UStVA submitted directly to the Finanzamt via the official ERiC library; confirmed working end-to-end with a formal Finanzamt acknowledgement
 
 ## Tech Stack
 
@@ -366,6 +368,10 @@ Every receipt is tagged with a category and optional subcategory. Categories map
 
 ## TODO
 
+This fork targets a single Freiberufler (UStVA, USt, EÜR). Open tasks with acceptance tests are
+in [docs/TODO.md](docs/TODO.md); tax values and their verification status are in
+[docs/tax-rules.md](docs/tax-rules.md).
+
 **Receipt processing**
 - [x] OCR pipeline (PaddleOCR + Tesseract fallback)
 - [x] 4-agent extraction (metadata, counterparty, amounts, line items)
@@ -373,25 +379,19 @@ Every receipt is tagged with a category and optional subcategory. Categories map
 
 **Tax calculation**
 - [x] UStVA — VAT pre-return (monthly / quarterly)
-- [x] UStE — annual VAT return
-- [x] EÜR — income-surplus statement
-- [x] KSt 1 — corporate income tax return
-- [x] GewSt — trade tax return
-- [x] Jahresabschluss — annual accounts (Bilanz + GuV, § 267a HGB)
-
-**Validation**
-- [x] XSD validation of generated XBRL against HGB taxonomy
-- [x] ELSTER dry-run / test-server validation before live submission
+- [x] USt — annual VAT return
+- [x] EÜR — income-surplus statement calculation (`finamt.tax.eur`; Kennzahl mapping not yet verified)
+- [ ] EÜR — Kleinunternehmer mode and VAT lines inside the EÜR
+- [ ] Invoice generation (§ 14 UStG), reverse-charge flag, Zusammenfassende Meldung
 
 **ELSTER transmission**
-- [x] UStVA — ELSTER XML builder + Kennzahlen mapper + RSA signing + HTTP submission
-- [x] E-Bilanz — XBRL instance document (HGB taxonomy v6, MicroBilG schema)
-- [x] E-Bilanz — ERiC ctypes bridge for actual transmission
-- [x] USt — ELSTER XML builder + ERiC ctypes submission (confirmed end-to-end)
-- [x] UStVA — ELSTER XML builder + ERiC ctypes submission (confirmed end-to-end)
-- [ ] KSt — ELSTER XML builder
-- [ ] GewSt — ELSTER XML builder
-- [ ] EÜR, ESt — ELSTER XML builder
+- [x] UStVA — ELSTER XML builder + ERiC submission
+- [x] USt — ELSTER XML builder + ERiC submission
+- [x] Test-mode submission and ERiC validation; live filing only with `FINAMT_ALLOW_LIVE_SUBMISSION=1`
+- [ ] EÜR — ELSTER XML builder (`finamt.tax.eur_elster.build_xml` is a stub until the Kennzahlen are verified)
+
+**Out of scope for this fork** (moved to `legacy/`, see [NOTICE.md](NOTICE.md)):
+KSt, GewSt, E-Bilanz, Jahresabschluss, Einkommensteuer.
 
 
 ## Contributing
