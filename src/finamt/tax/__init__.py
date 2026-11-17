@@ -1,27 +1,25 @@
 """
 finamt.tax
 ~~~~~~~~~~~~~
-Tax return computation modules.
+Tax computation modules for a single Freiberufler.
 
-Currently implemented:
-  - ``UStVA``  — Umsatzsteuer-Voranmeldung (VAT pre-return)
-  - ``USt``    — Umsatzsteuerjahreserklärung (E50, annual VAT return)
-  - ``KSt``    — Körperschaftsteuererklärung (E30, corporate income tax)
+In scope:
+  - ``ustva``       — Umsatzsteuer-Voranmeldung (UStVA) and annual USt figures
+  - ``eur``         — Einnahmen-Überschuss-Rechnung (EÜR, § 4 Abs. 3 EStG)
+  - ``elster``      — ELSTER XML for UStVA / USt (E50) and ERiC submission
 
-Planned:
-  - ``GewSt``     — Gewerbesteuer
-  - ``JA``        — Jahresabschluss
-  - ``eür``       — Einnahmen-Überschuss-Rechnung (EÜR / income-surplus statement)
-  - ``anlage_n``  — Anlage N (employment income)
+Out of scope (moved to ``legacy/``, see NOTICE.md): KSt, GewSt, E-Bilanz,
+Jahresabschluss. Einkommensteuer is not implemented.
 """
 
-from .kst import KStReport, generate_kst
+from .eur import EURLinie, EURReport, generate_eur
 from .ustva import USTVALineItem, USTVAReport, generate_ustva
 
 __all__ = [
     "USTVAReport",
     "USTVALineItem",
     "generate_ustva",
-    "KStReport",
-    "generate_kst",
+    "EURReport",
+    "EURLinie",
+    "generate_eur",
 ]
