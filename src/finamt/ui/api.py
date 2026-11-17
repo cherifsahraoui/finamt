@@ -613,7 +613,9 @@ async def upload_submission_document(
         if idx is None:
             raise HTTPException(status_code=404, detail="Submission not found.")
         safe_type = _re.sub(r"[^A-Za-z0-9_-]", "", type)
-        filename = f"Upload_{safe_type}_{year}_{kind}_{_dtm.utcnow().strftime('%Y%m%d_%H%M%S')}{ext}"
+        filename = (
+            f"Upload_{safe_type}_{year}_{kind}_{_dtm.utcnow().strftime('%Y%m%d_%H%M%S')}{ext}"
+        )
         layout.submitted_returns_dir.mkdir(parents=True, exist_ok=True)
         (layout.submitted_returns_dir / filename).write_bytes(content)
         old = records[idx].get(field)
