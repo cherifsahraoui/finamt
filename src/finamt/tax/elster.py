@@ -104,6 +104,7 @@ try:
 except ImportError:
     _REQUESTS_AVAILABLE = False
 
+from .safety import require_live_submission_allowed
 from .ustva import USTVAReport
 
 logger = logging.getLogger(__name__)
@@ -1010,6 +1011,9 @@ class ElsterClient:
 
     def _post(self, xml_bytes: bytes, timeout: int) -> SubmissionResult:
         """POST the signed XML and parse the ELSTER Rückmeldung."""
+        if not self.use_test:
+            require_live_submission_allowed()
+
         import os as _os
         import tempfile
 
@@ -1341,6 +1345,9 @@ class ElsterEricClient:
         is_berichtigung: bool,
         send: bool,
     ) -> SubmissionResult:
+        if send and not self.use_test:
+            require_live_submission_allowed()
+
         from pathlib import Path as _Path
 
         from .eric_wrapper import (
@@ -1460,6 +1467,9 @@ class ElsterEricClient:
     # ------------------------------------------------------------------
 
     def _run(self, xbrl_bytes: bytes, year: int, send: bool) -> SubmissionResult:
+        if send and not self.use_test:
+            require_live_submission_allowed()
+
         from .eric_wrapper import (
             ERIC_SENDE,
             ERIC_VALIDIERE,

@@ -41,3 +41,13 @@ Branch `baseline/fable-1`:
   now return 404.
 - `pyproject.toml`: removed the `arelle-release` dev dependency (only used by
   `validate_xbrl.py`); `uv.lock` updated. Ruff excludes `legacy/`.
+
+### Safety
+- `src/finamt/tax/safety.py` (new): live (non-test) ELSTER submission is disabled unless
+  `FINAMT_ALLOW_LIVE_SUBMISSION=1` is set. Checked where data is sent:
+  `ElsterClient._post`, `ElsterEricClient._run_ust` and `_run` (when `send=True` and
+  `use_test=False`). `POST /tax/ustva/submit` and `POST /tax/uste/submit` return HTTP 403 for
+  `use_test=false` without `validate_only`. Validation and test-mode submissions are not affected.
+- `.gitignore`: added ERiC, certificate, database, ELSTER payload and model patterns.
+- `.env.example`: placeholders in place of the upstream example Steuernummer / Hersteller-ID;
+  documented `ERIC_LIBRARY_PATH` and `FINAMT_ALLOW_LIVE_SUBMISSION`.

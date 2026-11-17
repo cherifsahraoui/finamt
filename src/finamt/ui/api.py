@@ -1332,6 +1332,18 @@ def post_ustva_submit(
     if not _LIB_AVAILABLE:
         raise HTTPException(status_code=503, detail="finamt library not available")
 
+    if not body.use_test and not body.validate_only:
+        from finamt.tax.safety import LIVE_SUBMISSION_ENV, live_submission_allowed
+
+        if not live_submission_allowed():
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Live ELSTER submission is disabled. Use test mode or set "
+                    f"{LIVE_SUBMISSION_ENV}=1 on the server."
+                ),
+            )
+
     if not body.quarter and not body.month:
         raise HTTPException(
             status_code=400, detail="Provide either 'quarter' (1-4) or 'month' (1-12)."
@@ -1650,6 +1662,18 @@ def post_uste_submit(
 
     if not _LIB_AVAILABLE:
         raise HTTPException(status_code=503, detail="finamt library not available")
+
+    if not body.use_test and not body.validate_only:
+        from finamt.tax.safety import LIVE_SUBMISSION_ENV, live_submission_allowed
+
+        if not live_submission_allowed():
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Live ELSTER submission is disabled. Use test mode or set "
+                    f"{LIVE_SUBMISSION_ENV}=1 on the server."
+                ),
+            )
 
     from datetime import date as _date
 
