@@ -78,7 +78,7 @@ until someone checks them against the ERiC Jahresdokumentation.
 | Kz 61 | Input tax from intra-EU acquisitions. | USt1A-2026 section F | 2026 | verified (2026-11-18) |
 | Kz 62 | Einfuhrumsatzsteuer (§ 15 Abs. 1 S. 1 Nr. 2 UStG). **Code adds it to Kz 66.** | USt1A-2026 section F; § 15 Abs. 1 S. 1 Nr. 2 UStG | 2026 | code differs → UST-1 |
 | Kz 67 | Input tax from § 13b services (§ 15 Abs. 1 S. 1 Nr. 4 UStG). | USt1A-2026 section F | 2026 | code differs → UST-4 |
-| Kz 50 / Kz 37 | Reductions under § 17 (credit notes, bad debts) contained in the base lines / in input tax. | USt1A-2026 section I | 2026 | code differs → UST-2 |
+| Kz 50 / Kz 37 | Extra memo lines only when a consideration became uncollectible (§ 17 Abs. 2 Nr. 1 UStG). Ordinary changes such as credit notes and discounts (§ 17 Abs. 1) are entered **in the base and tax lines themselves**, as negative amounts, in the period the change happens. Code skips receipts with negative VAT. | USt1A-2026 section I, Anleitung Zeilen 51–52 | 2026 | code differs → UST-2 |
 | Kz 39 | Deduction of the fixed Sondervorauszahlung (usually only in the last Voranmeldung of the year). | USt1A-2026 Zeile 49 | 2026 | verified (2026-11-18) |
 | Kz 83 | Remaining advance payment / surplus ("Bitte in jedem Fall ausfüllen"). Code omits Kz 83 for an empty period; the form says always fill it in. | USt1A-2026 Zeile 50 | 2026 | code differs → UST-2 |
 | `_USTVA_KZ_ORDER` | XML element order required by the UStVA XSD. | ERiC UStVA schema (developer login) | 2025 | TODO |
