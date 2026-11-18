@@ -7,6 +7,8 @@ Read this first. Then:
 - `docs/DECISIONS.md`: settled questions. Follow them; don't reopen them.
 - `docs/tax-rules.md`: every tax value with its official source and status.
 - `docs/BASELINE.md`: code map, entry points, receipt flow.
+- `docs/MANUAL-STEPS.md`: steps only the owner can do (ELSTER login, certificate, decisions).
+  When a card is blocked on the owner, point them to the matching step (M1–M8).
 
 **Scope**: a free, local tool for one German Freiberufler: UStVA (monthly/quarterly), annual
 USt and EÜR, with receipts as input. **Out of scope**: KSt, GewSt, E-Bilanz, Jahresabschluss,

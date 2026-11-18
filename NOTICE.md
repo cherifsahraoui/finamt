@@ -83,7 +83,7 @@ Branch `baseline/fable-1`:
 
 ### Documentation
 - New: `AGENTS.md`, `NOTICE.md`, `docs/BASELINE.md`, `docs/tax-rules.md`, `docs/TODO.md`,
-  `docs/DECISIONS.md`, `legacy/README.md`.
+  `docs/DECISIONS.md`, `docs/MANUAL-STEPS.md`, `legacy/README.md`.
 - `docs/tax-rules.md`: values verified on 2026-11-18 against gesetze-im-internet.de and the BMF
   form letters (UStVA 2026, Anlage EÜR 2025).
 - `README.md`: rewritten for the fork's goal (free Freiberufler VAT + EÜR tool): status table,
