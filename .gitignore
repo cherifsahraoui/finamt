@@ -1,6 +1,47 @@
 notes/
 data/
 
+### finamt fork: never commit secrets, ERiC, personal data or models ###
+# Environment files (keep the template)
+.env.*
+!.env.example
+# ELSTER certificates and keys
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+# ERiC libraries, plugins and logs (proprietary, licensed per developer)
+ERiC-*/
+eric/
+eric_logs/
+*.dylib
+*.dll
+libericapi*
+eric.log
+# Local databases and finamt project data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+.finamt/
+submitted_returns/
+# Generated ELSTER payloads (contain tax data)
+elster_*.xml
+UStVA_*.xml
+USt_*.xml
+EUER_*.xml
+# Model weights
+models/
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+
 # Created by https://www.toptal.com/developers/gitignore/api/windows,macos,linux,python,visualstudio
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,macos,linux,python,visualstudio
 

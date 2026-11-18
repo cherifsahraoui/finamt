@@ -1,467 +1,205 @@
-# finamt
+# finamt (Freiberufler fork)
 
-<img src="https://raw.githubusercontent.com/spaceoctahedron/finamt/main/.github/images/finamt-wordmark.svg" width="50%" alt="finamt"/>
+A free, local, open-source tool for **one German Freiberufler** to do their own VAT and
+EÜR without a paid bookkeeping subscription such as Accountable:
 
-<div>
-<br>
-</div>
+**receipts in → UStVA → annual Umsatzsteuererklärung → EÜR → ELSTER**
 
-<div align="center">
+Everything runs on your own machine. Receipts, the database and your ELSTER certificate never
+leave it, except for the ELSTER submission itself.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI version](https://img.shields.io/pypi/v/finamt?color=blue&label=PyPI)](https://pypi.org/project/finamt/)
-[![Downloads](https://pepy.tech/badge/finamt)](https://pepy.tech/project/finamt)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://github.com/spaceoctahedron/finamt/blob/main/LICENSE)
-[![Tests](https://github.com/spaceoctahedron/finamt/actions/workflows/tests.yml/badge.svg)](https://github.com/spaceoctahedron/finamt/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/spaceoctahedron-user/a44d923694c52f0711d3f84be0aaf644/raw/coverage.json)](https://github.com/spaceoctahedron/finamt/actions/workflows/tests.yml)
-[![GitHub last commit](https://img.shields.io/github/last-commit/spaceoctahedron/finamt)](https://github.com/spaceoctahedron/finamt/commits/main)
-[![Documentation Status](https://readthedocs.org/projects/finamt/badge/?version=latest)](https://readthedocs.org/projects/finamt/)
+> This is a fork of [spaceoctahedron/finamt](https://github.com/spaceoctahedron/finamt)
+> (AGPL-3.0), cut down to the Freiberufler use case. What changed is listed in [NOTICE.md](NOTICE.md).
+> It is not tax advice; see the [disclaimer](#disclaimer).
 
-![US](https://api.iconify.design/noto-v1/flag-for-flag-united-states.svg?height=16) English | ![DE](https://api.iconify.design/noto-v1/flag-for-flag-germany.svg?height=16) [German](https://github.com/spaceoctahedron/finamt/blob/main/readme/README_de.md)
+## What it does today
 
-</div>
+| Task | Status | How |
+|---|---|---|
+| Read receipts and invoices (PDF/scan) with OCR + a local LLM | ✅ works | `finamt process`, `finamt batch`, web UI |
+| Store receipts, de-duplicate, categorise | ✅ works | local SQLite in `~/.finamt/<project>/` |
+| UStVA calculation (quarterly) | ✅ works | `finamt ustva --quarter Q --year Y` |
+| UStVA calculation (monthly) | ✅ in the web UI / API | CLI flag planned (CLI-1) |
+| UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ test mode; live needs an explicit switch ([M3](docs/MANUAL-STEPS.md#m3-first-ustva-test-submission), [M6](docs/MANUAL-STEPS.md#m6-file-for-real)) | web UI (`finamt serve`) or API |
+| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works (VAT lines still missing, EUR-2) | Python API, see below |
+| EÜR submission via ELSTER | ⛔ not yet (EUR-4, needs [M4](docs/MANUAL-STEPS.md#m4-collect-the-eür-schema-facts-from-eric)) | — |
+| Credit notes, 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-2 … UST-4) | — |
+| Writing invoices (§ 14 UStG) | ⛔ not yet (INV-1) | — |
+| Zusammenfassende Meldung for EU clients | ⛔ not yet (ZM-1) | — |
+| Kleinunternehmer (§ 19 UStG) mode | ⛔ not yet (EUR-2) | — |
 
-An agentic Python library for extracting structured data from receipts and invoices and preparing essential German tax return statements.
+Out of scope: KSt, GewSt, E-Bilanz, Jahresabschluss, Einkommensteuer. The upstream code for
+these lives in [`legacy/`](legacy/README.md) and is not installed.
 
-## Features
+## Roadmap
 
-- **German Tax Alignment** — Category taxonomy and VAT handling aligned with German fiscal practice
-- **Local-First** — Everything runs completely offline; models are auto-downloaded from HuggingFace and cached locally, data is stored in a local database
-- **4-Agent Pipeline** — Sequential specialised agents for metadata, counterparty, amounts, and line items; short focused prompts for reliable local model performance
-- **Web UI** — Full browser interface for uploading, reviewing, editing, and managing receipts and invoices and preparing tax returns
-- **ELSTER submission** — Annual Umsatzsteuererklärung (USt), E-Bilanz, and UStVA submitted directly to the Finanzamt via the official ERiC library; confirmed working end-to-end with a formal Finanzamt acknowledgement
+The work is split into small tasks that an AI agent (or a person) can pick up one at a time.
+The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The next steps:
 
-## Tech Stack
+1. **UST-1**: import VAT on its own UStVA line (Kz 62)
+2. **UST-2**: credit notes in the UStVA; always send Kz 83
+3. **EUR-2**: VAT lines and Kleinunternehmer mode in the EÜR
+4. **CLI-1**: `finamt eur`, monthly UStVA, filing-period hint
+5. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
+6. **INV-1**: outgoing invoices with gapless numbering
+7. **ZM-1**: Zusammenfassende Meldung
+8. **EUR-4**: EÜR submission via ELSTER (needs the ERiC EÜR schema from the developer portal)
 
-**Backend**
-- ![Python](https://api.iconify.design/devicon/python.svg?height=16) [Python](https://www.python.org) — package language
-- ![FastAPI](https://api.iconify.design/devicon/fastapi.svg?height=16) [FastAPI](https://fastapi.tiangolo.com) — backend for the web UI
-- ![PaddleOCR](https://api.iconify.design/simple-icons/paddlepaddle.svg?height=16&color=%23363FE5) [PaddleOCR](https://github.com/PADDLEPADDLE/PADDLEOCR) — OCR for scanned PDFs 
-- ![Tesseract](https://api.iconify.design/devicon/google.svg?height=16) [Tesseract](https://github.com/tesseract-ocr/tesseract) — OCR for scanned PDFs and images when PaddleOCR fails or times out
-- ![HuggingFace](https://api.iconify.design/simple-icons/huggingface.svg?height=16&color=%23FFD21E) [HuggingFace Hub](https://huggingface.co) — models downloaded and cached automatically on first use; no separate server required
-    - ![Mistral](https://api.iconify.design/logos/mistral-ai-icon.svg?height=16) [Mistral](https://mistral.ai) – `mistral:7b` is the recommended default (maps to `mlx-community/Mistral-7B-Instruct-v0.3-4bit` on Apple Silicon)
-    - ![Qwen](https://api.iconify.design/simple-icons/qwen.svg?height=16&color=%237B2FBF) [Qwen](https://qwen.ai/home) – `qwen2.5:7b-instruct-q4_K_M` is a good alternative (maps to `mlx-community/Qwen2.5-7B-Instruct-4bit` on Apple Silicon)
-    - ![mlx-lm](https://api.iconify.design/simple-icons/apple.svg?height=16) [mlx-lm](https://github.com/ml-explore/mlx-lm) — 4-bit inference on Apple Silicon (M-series) via the MLX framework; ~13 % faster than Ollama
-    - ![transformers](https://api.iconify.design/simple-icons/huggingface.svg?height=16&color=%23FFD21E) [transformers](https://huggingface.co/docs/transformers) — cross-platform inference fallback (Linux / Windows / Intel Mac)
-- ![SQLite](https://api.iconify.design/devicon/sqlite.svg?height=16) [SQLite](https://sqlite.org) – local database for original receipts and extracted data
+Decisions that shape the project (CLI first, no live filing by default, …) are in
+[docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Frontend**
-- ![React](https://api.iconify.design/devicon/react.svg?height=16) [React](https://react.dev) — interactive frontend
-- ![Vite](https://api.iconify.design/devicon/vitejs.svg?height=16) [Vite](https://vite.dev) — fast dev server and production bundler
-- ![Tailwind CSS](https://api.iconify.design/devicon/tailwindcss.svg?height=16) [Tailwind CSS](https://tailwindcss.com) — utility-first styling
-- ![TypeScript](https://api.iconify.design/devicon/typescript.svg?height=16) [TypeScript](https://www.typescriptlang.org) — type-safe component and API code
+## Install
 
-
-**CLI**
-- ![Typer](https://api.iconify.design/devicon/typer.svg?height=16) [Typer](https://typer.tiangolo.com/) — CLI with coloured progress output
-
-**Packaging**
-- ![PyPI](https://api.iconify.design/devicon/pypi.svg?height=16) [PyPI](https://pypi.org/project/finamt/) — distributed as an installable Python package
-
-## Installation
+Python 3.10–3.13. From source:
 
 ```bash
-pip install finamt
+git clone https://github.com/cherifsahraoui/finamt.git
+cd finamt
+uv sync --extra dev          # or: python -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
+uv run finamt --help
 ```
 
-For CLI usage, installing via [pipx](https://pipx.pypa.io/) is recommended — it places `finamt` into its own dedicated virtual environment, ensuring its dependencies never interfere with your other projects, while still exposing the `finamt` command globally without requiring you to activate a virtualenv:
+On first use, OCR and LLM models are downloaded from HuggingFace (about 4 GB, cached in
+`~/.cache/huggingface/hub`). Tesseract is an optional OCR fallback:
+`sudo apt-get install tesseract-ocr tesseract-ocr-deu` or `brew install tesseract tesseract-lang`.
 
-```bash
-pipx install finamt
-```
+## A year with finamt
 
-> **Note for Python 3.14+ users:** `finamt` currently requires Python 3.13. If your system Python is 3.14 or newer, install [uv](https://docs.astral.sh/uv/) to manage Python versions and pass the resolved path to pipx:
-> ```bash
-> uv python install 3.13
-> pipx install finamt --python $(uv python find 3.13)
-> ```
+1. **Collect receipts.** Drop incoming invoices (`--type purchase`) and your own outgoing invoices
+   (`--type sale`) into a folder and read them in:
+   ```bash
+   finamt batch --input-dir ~/belege/2025-q1 --type purchase
+   finamt batch --input-dir ~/rechnungen/2025-q1 --type sale
+   ```
+   Or use the web UI: `finamt serve`, then upload, review and correct.
+2. **UStVA** every quarter (or month, if your prior-year VAT was over 9 000 €, § 18 Abs. 2 UStG),
+   due on the 10th day after the period:
+   ```bash
+   finamt ustva --quarter 1 --year 2025 --output ustva_q1_2025.json
+   ```
+   Submit from the web UI in **test mode** first. For a real filing, follow
+   [M6](docs/MANUAL-STEPS.md#m6-file-for-real) (live needs `FINAMT_ALLOW_LIVE_SUBMISSION=1`).
+3. **Annual USt** from the web UI (Umsatzsteuererklärung).
+4. **EÜR** for the year (Python until `finamt eur` exists):
+   ```python
+   from datetime import date
+   from finamt.storage import get_repository
+   from finamt.tax import generate_eur
 
-### System Requirements
+   with get_repository() as repo:
+       receipts = list(repo.find_by_period(date(2025, 1, 1), date(2025, 12, 31)))
+   report = generate_eur(receipts, 2025)
+   print(report.summary())          # Kennzahlen per Anlage EÜR 2025 + "ZU PRÜFEN" list
+   ```
+   Anything finamt can't classify safely (assets over 800 €, meals, gifts, donations, tax
+   payments, private deposits/withdrawals) appears under **ZU PRÜFEN** and is *not* counted until
+   you decide. Until EÜR submission exists, copy the Kennzahlen into ELSTER by hand.
 
-- Python 3.10+
-- Tesseract OCR (optional fallback when PaddleOCR times out)
+## Categories and EÜR lines
 
-> **No Ollama required.** LLM models are downloaded automatically from HuggingFace on first use (~4 GB per model) and cached at `~/.cache/huggingface/hub`. On Apple Silicon the `mlx-lm` backend is used; on other platforms `transformers` is used.
+Each receipt has a category and an optional subcategory. For purchases, they decide the Anlage EÜR
+2025 line (Kennzahl). The values are verified in [docs/tax-rules.md](docs/tax-rules.md).
 
-#### Tesseract OCR (optional fallback from PaddleOCR)
+| Category | Subcategories | EÜR Kz (purchase) |
+|---|---|---|
+| `services` | `freelance` `consulting` `legal` `accounting` `notary` | 110 Fremdleistungen; legal/accounting/notary → 194 |
+| `products` | `physical_goods` `digital_goods` `merchandise` `samples` | 100 |
+| `material` | `consumables` `raw_materials` `packaging` `merchandise` | 100; consumables → 229; packaging → 227 |
+| `equipment` | `low_value_asset` `computer` `machinery` `furniture` `tools` | 132 GWG up to 800 € net; above → review (AfA) |
+| `software` | `subscriptions` `pay_as_you_go` `licenses` `hosting` `domains` | 228 EDV-Kosten |
+| `licensing` | `software_licenses` `media_licenses` `other_ip` | 183 |
+| `telecommunication` | `phone` `internet` `bundled` | 280 |
+| `travel` | `transport` `accommodation` `meals` `per_diem` `incidental` | 221; transport → 146; meals/per_diem → review |
+| `car` | `fuel` `parking` `garage` `repair` `maintenance` `insurance` `leasing` `rental` | 146; leasing → 144; insurance → 145 |
+| `education` | `courses` `books` `conferences` `certifications` | 281; books → 229 |
+| `utilities` | `electricity` `heating` `water` `waste` | 151 |
+| `insurance` | `liability` `health` `vehicle` `property` | 223; vehicle → 145; property → 151; health → review |
+| `financial` | `bank_fees` `interest` `loan_costs` `payment_fees` | 183; interest/loan_costs → 234 |
+| `office` | `rent` `coworking` `storage` `cleaning` `security` | 150; cleaning/security → 151 |
+| `marketing` | `advertising` `print_media` `trade_fairs` `sponsorship` `gifts` | 224; gifts → review |
+| `donations` | `charitable` `political` `church` | review |
+| `public_fees` | `broadcasting_fee` `ihk_hwk` `berufsgenossenschaft` `other_public_fee` | 223 |
+| `tax_settlement` | `vat_refund` `vat_payment` `income_tax` `trade_tax` `other_tax` | review (Kz 186/141 in EUR-2) |
+| `capital_movement` | `owner_equity` `shareholder_loan` `withdrawal` | review (not a business income/expense) |
+| `other` | `membership_fees` `sundry` | 183; membership_fees → 223 |
 
-**Ubuntu / Debian**
-```bash
-sudo apt-get install tesseract-ocr tesseract-ocr-deu
-```
+Sales: taxable → Kz 112, 0 % / tax-free → Kz 103, sale of equipment → Kz 102.
 
-**macOS**
-```bash
-brew install tesseract tesseract-lang
-```
+## Safety
 
-**Windows**
+- **No live filing by default.** Anything legally binding sent to ELSTER needs
+  `FINAMT_ALLOW_LIVE_SUBMISSION=1` in your local environment. Test submissions (Testmerker) and
+  validation always work. EÜR live submission is disabled completely for now.
+- **Secrets stay local.** Certificates (`.pfx`), `.env`, databases, ERiC libraries and model files are
+  git-ignored. Put real values only in `.env` (template: [.env.example](.env.example)).
+- **Verified numbers only.** Every rate, threshold and Kennzahl the code uses is listed with its
+  official source in [docs/tax-rules.md](docs/tax-rules.md). Anything unverified is marked `TODO`.
 
-Download the installer from https://github.com/UB-Mannheim/tesseract/wiki and add it to your `PATH`.
+## ELSTER setup and other manual steps
 
-## Quick Start
+Some steps need you (your ELSTER developer login, certificate or a decision). They are written up
+step by step in **[docs/MANUAL-STEPS.md](docs/MANUAL-STEPS.md)**:
 
-### Interactive UI
-
-```bash
-finamt serve
-```
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/spaceoctahedron/finamt/main/docs/images/Demo.webp" width="100%" />
-  <em>Interactive UI to upload receipts and manage tax statements</em>
-</p>
-
-### Python API
-
-#### Process a single receipt (expense)
-
-```python
-from finamt import FinanceAgent
-
-agent = FinanceAgent()
-result = agent.process_receipt("receipt.pdf")
-
-if result.success:
-    data = result.data
-    print(f"Counterparty: {data.vendor}")
-    print(f"Date:         {data.receipt_date}")
-    print(f"Total:        {data.total_amount} EUR")
-    print(f"VAT:          {data.vat_percentage}% ({data.vat_amount} EUR)")
-    print(f"Net:          {data.net_amount} EUR")
-    print(f"Category:     {data.category}")
-    print(f"Items:        {len(data.items)}")
-
-    # Serialise to JSON
-    with open("extracted.json", "w", encoding="utf-8") as f:
-        f.write(data.to_json())
-else:
-    print(f"Extraction failed: {result.error_message}")
-```
-
-#### Sale invoices (outgoing)
-
-```python
-result = agent.process_receipt("invoice_to_client.pdf", receipt_type="sale")
-```
-
-#### Batch processing
-
-```python
-from pathlib import Path
-from finamt import FinanceAgent
-
-agent = FinanceAgent()
-results = agent.batch_process(list(Path("receipts/").glob("*.pdf")))
-
-for path, result in results.items():
-    if result.success:
-        print(f"{path}: {result.data.total_amount} EUR")
-    else:
-        print(f"{path}: ERROR — {result.error_message}")
-```
-
-## Configuration
-
-Settings are read in priority order from: environment variables → `.env` file → built-in defaults.
-
-```bash
-# .env
-
-# OCR and general settings
-FINAMT_OCR_LANGUAGE=german
-FINAMT_OCR_TIMEOUT=60
-FINAMT_TESSERACT_CMD=tesseract
-FINAMT_OCR_PREPROCESS=true
-FINAMT_PDF_DPI=150
-
-# Extraction agents — all 4 agents use this model
-FINAMT_AGENT_MODEL=mistral:7b
-FINAMT_AGENT_TIMEOUT=60
-FINAMT_AGENT_NUM_CTX=4096
-FINAMT_AGENT_MAX_RETRIES=2
-```
-
-You can also pass config objects directly:
-
-```python
-from finamt import FinanceAgent
-from finamt.agents.config import Config, AgentsConfig
-
-agent = FinanceAgent(
-    config=Config(ocr_language="deu+eng", pdf_dpi=150),
-    agents_cfg=AgentsConfig(agent_model="mistral:7b"),
-)
-```
-
-## API Reference
-
-### FinanceAgent
-
-```python
-class FinanceAgent:
-    def __init__(
-        self,
-        config:     Config | None = None,
-        db_path:    str | Path | None = "~/.finamt/default/finamt.db",
-        agents_cfg: AgentsConfig | None = None,
-    ) -> None: ...
-
-    def process_receipt(
-        self,
-        pdf_path:     str | Path | bytes,
-        receipt_type: str = "purchase",   # "purchase" or "sale"
-    ) -> ExtractionResult: ...
-
-    def batch_process(
-        self,
-        pdf_paths:    list[str | Path],
-        receipt_type: str = "purchase",
-    ) -> dict[str, ExtractionResult]: ...
-```
-
-### ExtractionResult
-
-Always check `success` before accessing `data`.
-
-```python
-@dataclass
-class ExtractionResult:
-    success:         bool
-    data:            ReceiptData | None
-    error_message:   str | None
-    duplicate:       bool                  # True if already in the database
-    existing_id:     str | None            # ID of the original if duplicate
-    processing_time: float | None          # seconds
-
-    def to_dict(self) -> dict: ...
-```
-
-### ReceiptData
-
-```python
-@dataclass
-class ReceiptData:
-    id:               str                  # SHA-256 of OCR text — stable dedup key
-    receipt_type:     ReceiptType          # "purchase" or "sale"
-    counterparty:     Counterparty | None  # vendor (purchase) or client (sale)
-    receipt_number:   str | None
-    receipt_date:     datetime | None
-    total_amount:     Decimal | None
-    currency:         str | "EUR"
-    vat_percentage:   Decimal | None       # e.g. Decimal("19.0")
-    vat_amount:       Decimal | None
-    net_amount:       Decimal | None       # computed: total - vat
-    category:         ReceiptCategory
-    items:            list[ReceiptItem]
-    vat_splits:       list[dict]           # for mixed-rate invoices
-
-    vendor: str | None                     # alias for counterparty.name
-
-    def to_dict(self) -> dict: ...
-    def to_json(self) -> str: ...
-```
-
-### Counterparty
-
-```python
-@dataclass
-class Counterparty:
-    id:          str           # UUID assigned by the database
-    name:        str | None
-    vat_id:      str | None    # EU format, e.g. DE123456789
-    tax_number:  str | None    # German Steuernummer, e.g. 123/456/78901
-    address:     Address
-    verified:    bool          # manually confirmed in the UI
-```
-
-### ReceiptItem
-
-```python
-@dataclass
-class ReceiptItem:
-    position:    int | None
-    description: str
-    quantity:    Decimal | None
-    unit_price:  Decimal | None
-    total_price: Decimal | None
-    vat_rate:    Decimal | None
-    vat_amount:  Decimal | None
-    category:    ReceiptCategory
-
-    def to_dict(self) -> dict: ...
-```
-
-### ReceiptCategory
-
-A validated string subclass. Invalid values are silently normalised to `"other"`.
-
-```python
-from finamt.agents.prompts import RECEIPT_CATEGORIES   # list[str]
-from finamt.models import ReceiptCategory
-
-cat = ReceiptCategory("software")       # valid
-cat = ReceiptCategory("unknown_value")  # normalised to "other"
-cat = ReceiptCategory.other()           # explicit fallback
-```
-
-### Exceptions
-
-All exceptions inherit from `FinanceAgentError`.
-
-| Exception | Raised when |
+| Step | What |
 |---|---|
-| `OCRProcessingError` | PDF cannot be opened or text extraction fails |
-| `LLMExtractionError` | Model returns invalid JSON after all retries |
-| `InvalidReceiptError` | Extracted data fails business-logic validation |
+| M1 | Developer area, Hersteller-ID, download ERiC (outside the repo), certificate |
+| M2 | Fill in `.env`, check that ERiC loads |
+| M3 | First UStVA validation and test submission (web UI or `curl`) |
+| M4 | Read the EÜR schema facts from the ERiC docs (unblocks EÜR submission) |
+| M5 | Decide how assets above 800 € are depreciated |
+| M6 | File for real (live), with the checklist |
+| M7 | Yearly form check |
+| M8 | Optional: ask upstream for the web UI source |
 
-```python
-from finamt.exceptions import FinanceAgentError, OCRProcessingError
+## About the web UI
 
-try:
-    result = agent.process_receipt("scan.pdf")
-except OCRProcessingError as e:
-    print(e)
+`finamt serve` starts the web UI from upstream. It ships only as a **compiled bundle** whose source
+is not published, so this fork doesn't change it ([decision D2](docs/DECISIONS.md)).
+
+- **Use it now** for uploading and reviewing receipts, and for UStVA and annual USt
+  (validate → test → live). It works with this fork. Set Rechtsform to *Freiberuflich* so the
+  corporate-only pages (KSt, GewSt, Jahresabschluss) stay hidden.
+- **It has no EÜR and no invoices.** Use the CLI and Python for those.
+- **Don't build a UI yourself now.** The missing features come first in the CLI. After that, AI
+  agents build a small server-rendered UI owned by this fork under `/app`, which replaces the bundle
+  later: tasks UI-1 … UI-6 in [docs/TODO.md](docs/TODO.md).
+
+## For contributors and AI agents
+
+Start with **[AGENTS.md](AGENTS.md)**: commands, hard rules and the definition of done. Then take the
+first `ready` card in [docs/TODO.md](docs/TODO.md). Code map: [docs/BASELINE.md](docs/BASELINE.md).
+
+```bash
+uv run pytest                          # offline: no LLM, OCR model, ERiC or network
+uv run ruff check src tests
+uv run ruff format --check src tests
 ```
 
-## Extraction Pipeline
+## How it reads receipts
 
-Each receipt goes through four sequential LLM calls, each with a short focused prompt:
+OCR (PyMuPDF text layer, PaddleOCR, Tesseract fallback) followed by four small local-LLM agents:
 
 | Agent | Extracts |
 |---|---|
-| Agent 1 | Receipt number, date, category |
-| Agent 2 | Counterparty name, VAT ID, Steuernummer, address |
-| Agent 3 | Total amount, VAT percentage, VAT amount |
-| Agent 4 | Line items (description, VAT rate, VAT amount, price) |
+| 1 | receipt number, date, category |
+| 2 | counterparty (name, VAT ID, Steuernummer, address) |
+| 3 | total, VAT rate, VAT amount |
+| 4 | line items |
 
-Results are merged in Python — no additional LLM validation step. Debug output for every agent (prompt, raw response, parsed JSON) is saved to `~/.finamt/debug/<receipt_id>/`.
+Models: `mistral:7b` (default) or `qwen2.5:7b-instruct-q4_K_M`, via mlx-lm on Apple Silicon or
+transformers elsewhere. Settings are in `.env` (`FINAMT_AGENT_*`, `FINAMT_OCR_*`).
 
-## Categories and Subcategories
+## License and credits
 
-Every receipt is tagged with a category and optional subcategory. Categories map directly to line items in the German ELSTER tax forms (EÜR / UStVA), so the correct totals land in the right fields without manual re-sorting.
-
-| Category | Subcategories |
-|---|---|
-| ![services](https://api.iconify.design/mdi/briefcase.svg?height=16&color=%23EF4444) `services` | `freelance` `consulting` `legal` `accounting` `notary` |
-| ![products](https://api.iconify.design/ant-design/product-filled.svg?height=16&color=%23EF4444) `products` | `physical_goods` `digital_goods` `merchandise` `samples` |
-| ![material](https://api.iconify.design/solar/box-bold.svg?height=16&color=%23EF4444) `material` | `consumables` `raw_materials` `packaging` `merchandise` |
-| ![equipment](https://api.iconify.design/streamline-plump/computer-pc-desktop-solid.svg?height=16&color=%23EF4444) `equipment` | `low_value_asset` `computer` `machinery` `furniture` `tools` |
-| ![software](https://api.iconify.design/heroicons/cpu-chip-16-solid.svg?height=16&color=%23EF4444) `software` | `subscriptions` `pay_as_you_go` `licenses` `hosting` `domains` |
-| ![licensing](https://api.iconify.design/mdi/file-certificate.svg?height=16&color=%23EF4444) `licensing` | `software_licenses` `media_licenses` `other_ip` |
-| ![telecommunication](https://api.iconify.design/streamline-flex/satellite-dish-solid.svg?height=16&color=%23EF4444) `telecommunication` | `phone` `internet` `bundled` |
-| ![travel](https://api.iconify.design/mdi/airplane.svg?height=16&color=%23EF4444) `travel` | `transport` `accommodation` `meals` `per_diem` `incidental` |
-| ![car](https://api.iconify.design/boxicons/car-filled.svg?height=16&color=%23EF4444) `car` | `fuel` `parking` `garage` `repair` `maintenance` `insurance` `leasing` `rental` |
-| ![education](https://api.iconify.design/wpf/books.svg?height=16&color=%23EF4444) `education` | `courses` `books` `conferences` `certifications` |
-| ![utilities](https://api.iconify.design/roentgen/electricity.svg?height=16&color=%23EF4444) `utilities` | `electricity` `heating` `water` `waste` |
-| ![insurance](https://api.iconify.design/fa/shield.svg?height=16&color=%23EF4444) `insurance` | `liability` `health` `vehicle` `property` |
-| ![financial](https://api.iconify.design/boxicons/bank-filled.svg?height=16&color=%23EF4444) `financial` | `bank_fees` `interest` `loan_costs` `payment_fees` |
-| ![office](https://api.iconify.design/vaadin/office.svg?height=16&color=%23EF4444) `office` | `rent` `coworking` `storage` `cleaning` `security` |
-| ![marketing](https://api.iconify.design/mdi/loudspeaker.svg?height=16&color=%23EF4444) `marketing` | `advertising` `print_media` `trade_fairs` `sponsorship` `gifts` |
-| ![donations](https://api.iconify.design/mdi/donation.svg?height=16&color=%23EF4444) `donations` | `charitable` `political` `church` |
-| ![public_fees](https://api.iconify.design/mdi/gavel.svg?height=16&color=%23EF4444) `public_fees` | `broadcasting_fee` `ihk_hwk` `berufsgenossenschaft` `other_public_fee` |
-| ![other](https://api.iconify.design/flowbite/folder-plus-solid.svg?height=16&color=%23EF4444) `other` | `membership_fees` `sundry` |
-
-
-
-## TODO
-
-**Receipt processing**
-- [x] OCR pipeline (PaddleOCR + Tesseract fallback)
-- [x] 4-agent extraction (metadata, counterparty, amounts, line items)
-- [x] Deduplication, database storage, batch processing
-
-**Tax calculation**
-- [x] UStVA — VAT pre-return (monthly / quarterly)
-- [x] UStE — annual VAT return
-- [x] EÜR — income-surplus statement
-- [x] KSt 1 — corporate income tax return
-- [x] GewSt — trade tax return
-- [x] Jahresabschluss — annual accounts (Bilanz + GuV, § 267a HGB)
-
-**Validation**
-- [x] XSD validation of generated XBRL against HGB taxonomy
-- [x] ELSTER dry-run / test-server validation before live submission
-
-**ELSTER transmission**
-- [x] UStVA — ELSTER XML builder + Kennzahlen mapper + RSA signing + HTTP submission
-- [x] E-Bilanz — XBRL instance document (HGB taxonomy v6, MicroBilG schema)
-- [x] E-Bilanz — ERiC ctypes bridge for actual transmission
-- [x] USt — ELSTER XML builder + ERiC ctypes submission (confirmed end-to-end)
-- [x] UStVA — ELSTER XML builder + ERiC ctypes submission (confirmed end-to-end)
-- [ ] KSt — ELSTER XML builder
-- [ ] GewSt — ELSTER XML builder
-- [ ] EÜR, ESt — ELSTER XML builder
-
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-change`) and make your changes
-3. Run the test suite:
-   ```bash
-   pytest --cov=src --cov-report=term-missing
-   ```
-4. Lint and format with ![Ruff](https://api.iconify.design/catppuccin/ruff.svg?height=16) Ruff:
-   ```bash
-   ruff check --fix src/ tests/
-   ruff format src/ tests/
-   ```
-5. Update the documentation
-6. Submit a pull request
-
-## License
-
-AGPL-3.0 — see [LICENSE](https://raw.githubusercontent.com/spaceoctahedron/finamt/main/LICENSE) for details.
-
-## Commercial Licensing
-
-finamt is available under the AGPL-3.0 license.
-
-If you wish to use finamt in a proprietary setting, without the obligations of the AGPL (e.g. without releasing source code or for use in a commercial SaaS product), a commercial license is available.
-
-For inquiries, contact: info@spaceoctahedron.com
-
-## Third-Party Components and Models
-
-This software depends on external libraries and services, including:
-
-- PaddleOCR (Apache License 2.0)
-- Tesseract OCR (Apache License 2.0)
-- HuggingFace Hub / transformers (Apache License 2.0)
-- mlx-lm (MIT License, Apple Silicon only)
-
-finamt downloads language models from HuggingFace (e.g. Mistral, Qwen) on first use and caches them locally.
-
-These models are **not distributed** with this software and are subject to their own licenses.
-Users are responsible for complying with the respective terms when downloading and using such models.
+AGPL-3.0, see [LICENSE](LICENSE). Based on finamt by Yauheniya Varabyova / Space Octahedron GmbH
+([upstream](https://github.com/spaceoctahedron/finamt)); the changes in this fork are listed in
+[NOTICE.md](NOTICE.md). Third-party components: PaddleOCR, Tesseract, HuggingFace transformers
+(Apache-2.0), mlx-lm (MIT). LLM models are downloaded on first use and are subject to their own licenses.
+The ELSTER ERiC library is not distributed with this project.
 
 ## Disclaimer
 
-This software is provided for informational and automation purposes only.
-
-It does **not** constitute tax, legal, or accounting advice.
-
-While finamt is designed to assist with the preparation of German tax-related data (e.g. VAT returns, EÜR, ELSTER submissions), no guarantee is made regarding:
-
-- correctness of extracted data
-- completeness of financial records
-- compliance with applicable tax laws and regulations
-- acceptance by tax authorities
-
-Users are solely responsible for verifying all outputs before submission to any authority.
-
-**Always consult a qualified tax advisor (Steuerberater) for legally binding guidance.**
-
-To the maximum extent permitted by law, Space Octahedron GmbH assumes no liability for:
-
-- errors in OCR or LLM-based extraction
-- incorrect classifications or calculations
-- rejected or incorrect tax filings
-- financial losses or penalties arising from use of this software
-
-## Product Information (ELSTER)
-
-- **Produktname:** Space Octahedron® finamt  
-- **Hersteller:** Space Octahedron GmbH  
-- **Kontakt:** info@spaceoctahedron.com
+This software helps prepare German VAT and EÜR data. It is **not tax, legal or accounting advice**.
+OCR and LLM extraction can be wrong, and Kennzahlen change every year. Check every figure before
+submitting anything to the Finanzamt; for binding advice, ask a Steuerberater. The authors accept no
+liability for incorrect filings.

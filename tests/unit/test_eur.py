@@ -163,20 +163,22 @@ class TestGenerateEur:
         report = generate_eur(receipts, YEAR)
         assert report.skipped_count == 1
 
-    def test_travel_mapped_to_kz165(self):
+    # Kennzahlen per Anlage EÜR 2025 (docs/tax-rules.md). Upstream used 165/183/176,
+    # which are Bewirtung / Übrige / Entfernungspauschale on the official form.
+    def test_travel_mapped_to_kz221(self):
         receipts = [_receipt(category="travel")]
         report = generate_eur(receipts, YEAR)
-        assert report.ausgaben_lines["travel"].kz == "165"
+        assert report.ausgaben_lines["travel"].kz == "221"
 
-    def test_education_mapped_to_kz183(self):
+    def test_education_mapped_to_kz281(self):
         receipts = [_receipt(category="education")]
         report = generate_eur(receipts, YEAR)
-        assert report.ausgaben_lines["education"].kz == "183"
+        assert report.ausgaben_lines["education"].kz == "281"
 
-    def test_unknown_category_falls_back_to_176(self):
+    def test_other_category_maps_to_kz183(self):
         receipts = [_receipt(category="other")]
         report = generate_eur(receipts, YEAR)
-        assert report.ausgaben_lines["other"].kz == "176"
+        assert report.ausgaben_lines["other"].kz == "183"
 
     def test_multiple_receipts_same_category_accumulate(self):
         receipts = [
