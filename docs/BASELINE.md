@@ -3,6 +3,7 @@
 Snapshot of the code as of the `baseline/fable-1` branch (package version 0.26.0).
 Scope of this fork: **UStVA, annual USt and EÜR for a single Freiberufler**.
 Read `AGENTS.md` before changing code. Tasks: `docs/TODO.md`. Decisions: `docs/DECISIONS.md`.
+Owner-only steps: `docs/MANUAL-STEPS.md`.
 Tax values and their sources: `docs/tax-rules.md`.
 
 ## Package map (`src/finamt/`)
@@ -23,7 +24,7 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `tax/safety.py` | Live-submission gate (`FINAMT_ALLOW_LIVE_SUBMISSION`). |
 | `ui/api.py` | FastAPI backend for the web UI. |
 | `ui/server.py` | Uvicorn launcher (`finamt serve`). |
-| `ui/static/` | **Pre-built** React bundle. The frontend source is not in this repo. |
+| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2; covers receipts + UStVA/USt, no EÜR. A new UI goes to `ui/web/` (tasks UI-1 … UI-6). |
 | `utils.py`, `progress.py`, `exceptions.py` | Parsing helpers, SSE progress events, exception types. |
 
 Outside the package: `legacy/` holds the removed KSt / E-Bilanz / Jahresabschluss code

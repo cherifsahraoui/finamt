@@ -20,9 +20,9 @@ leave it, except for the ELSTER submission itself.
 | Store receipts, de-duplicate, categorise | ✅ works | local SQLite in `~/.finamt/<project>/` |
 | UStVA calculation (quarterly) | ✅ works | `finamt ustva --quarter Q --year Y` |
 | UStVA calculation (monthly) | ✅ in the web UI / API | CLI flag planned (CLI-1) |
-| UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ works in test mode; live needs an explicit switch | web UI (`finamt serve`) |
+| UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ test mode; live needs an explicit switch ([M3](docs/MANUAL-STEPS.md#m3-first-ustva-test-submission), [M6](docs/MANUAL-STEPS.md#m6-file-for-real)) | web UI (`finamt serve`) or API |
 | EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works (VAT lines still missing, EUR-2) | Python API, see below |
-| EÜR submission via ELSTER | ⛔ not yet (EUR-4, needs ERiC docs) | — |
+| EÜR submission via ELSTER | ⛔ not yet (EUR-4, needs [M4](docs/MANUAL-STEPS.md#m4-collect-the-eür-schema-facts-from-eric)) | — |
 | Credit notes, 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-2 … UST-4) | — |
 | Writing invoices (§ 14 UStG) | ⛔ not yet (INV-1) | — |
 | Zusammenfassende Meldung for EU clients | ⛔ not yet (ZM-1) | — |
@@ -77,8 +77,8 @@ On first use, OCR and LLM models are downloaded from HuggingFace (about 4 GB, ca
    ```bash
    finamt ustva --quarter 1 --year 2025 --output ustva_q1_2025.json
    ```
-   Submit from the web UI in **test mode** first. Live filing needs `FINAMT_ALLOW_LIVE_SUBMISSION=1`
-   (see [Safety](#safety)).
+   Submit from the web UI in **test mode** first. For a real filing, follow
+   [M6](docs/MANUAL-STEPS.md#m6-file-for-real) (live needs `FINAMT_ALLOW_LIVE_SUBMISSION=1`).
 3. **Annual USt** from the web UI (Umsatzsteuererklärung).
 4. **EÜR** for the year (Python until `finamt eur` exists):
    ```python
@@ -135,14 +135,34 @@ Sales: taxable → Kz 112, 0 % / tax-free → Kz 103, sale of equipment → Kz 1
 - **Verified numbers only.** Every rate, threshold and Kennzahl the code uses is listed with its
   official source in [docs/tax-rules.md](docs/tax-rules.md). Anything unverified is marked `TODO`.
 
-## ELSTER setup
+## ELSTER setup and other manual steps
 
-1. Get an ELSTER certificate (`.pfx`) for your Steuernummer at elster.de.
-2. With an ELSTER developer account, download **ERiC** and unpack it outside this repository.
-3. Copy `.env.example` to `.env`. Set both `FINAMT_ERIC_HOME` (read by the web UI today) and
-   `ERIC_LIBRARY_PATH` (the future single setting, CFG-1) to the ERiC `lib` folder. Then fill in the
-   certificate path and PIN, Steuernummer, Finanzamt number, Bundesland and your Hersteller-ID.
-4. Start `finamt serve` and submit a UStVA in test mode.
+Some steps need you (your ELSTER developer login, certificate or a decision). They are written up
+step by step in **[docs/MANUAL-STEPS.md](docs/MANUAL-STEPS.md)**:
+
+| Step | What |
+|---|---|
+| M1 | Developer area, Hersteller-ID, download ERiC (outside the repo), certificate |
+| M2 | Fill in `.env`, check that ERiC loads |
+| M3 | First UStVA validation and test submission (web UI or `curl`) |
+| M4 | Read the EÜR schema facts from the ERiC docs (unblocks EÜR submission) |
+| M5 | Decide how assets above 800 € are depreciated |
+| M6 | File for real (live), with the checklist |
+| M7 | Yearly form check |
+| M8 | Optional: ask upstream for the web UI source |
+
+## About the web UI
+
+`finamt serve` starts the web UI from upstream. It ships only as a **compiled bundle** whose source
+is not published, so this fork doesn't change it ([decision D2](docs/DECISIONS.md)).
+
+- **Use it now** for uploading and reviewing receipts, and for UStVA and annual USt
+  (validate → test → live). It works with this fork. Set Rechtsform to *Freiberuflich* so the
+  corporate-only pages (KSt, GewSt, Jahresabschluss) stay hidden.
+- **It has no EÜR and no invoices.** Use the CLI and Python for those.
+- **Don't build a UI yourself now.** The missing features come first in the CLI. After that, AI
+  agents build a small server-rendered UI owned by this fork under `/app`, which replaces the bundle
+  later: tasks UI-1 … UI-6 in [docs/TODO.md](docs/TODO.md).
 
 ## For contributors and AI agents
 
