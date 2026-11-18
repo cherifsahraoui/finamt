@@ -1,7 +1,12 @@
 # AGENTS.md — working on the finamt fork
 
-Read this first. Then `docs/BASELINE.md` (code map), `docs/tax-rules.md` (tax values and
-their sources) and `docs/TODO.md` (open tasks).
+Read this first. Then:
+
+- `docs/TODO.md`: the **task board**. Take the first `ready` task unless the owner names one, and
+  follow its card (goal, verified rules, files, steps, tests, done-when).
+- `docs/DECISIONS.md`: settled questions. Follow them; don't reopen them.
+- `docs/tax-rules.md`: every tax value with its official source and status.
+- `docs/BASELINE.md`: code map, entry points, receipt flow.
 
 **Scope**: a free, local tool for one German Freiberufler: UStVA (monthly/quarterly), annual
 USt and EÜR, with receipts as input. **Out of scope**: KSt, GewSt, E-Bilanz, Jahresabschluss,
@@ -79,8 +84,8 @@ run the same commands without `uv run`.
 - [ ] `uv run pytest` passes offline (skips and xfails have a reason).
 - [ ] `uv run ruff check src tests` and `uv run ruff format --check src tests` pass.
 - [ ] New or changed tax values are in `docs/tax-rules.md` with source and status.
-- [ ] `docs/BASELINE.md`, `docs/TODO.md` and `NOTICE.md` updated if structure, tasks or upstream
-      behaviour changed.
+- [ ] `docs/BASELINE.md`, `NOTICE.md` updated if structure or upstream behaviour changed.
+- [ ] The task card in `docs/TODO.md` is marked `done (date)` and the board is updated.
 - [ ] No secrets, ERiC files, certificates, databases, models or personal data staged
       (`git status`, `git diff --cached --stat`).
 - [ ] Live ELSTER submission still impossible without `FINAMT_ALLOW_LIVE_SUBMISSION=1`
