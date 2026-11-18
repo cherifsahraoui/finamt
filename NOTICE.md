@@ -83,6 +83,10 @@ Branch `baseline/fable-1`:
 
 ### Documentation
 - New: `AGENTS.md`, `NOTICE.md`, `docs/BASELINE.md`, `docs/tax-rules.md`, `docs/TODO.md`,
-  `legacy/README.md`.
-- `README.md`: fork notice; TODO section rewritten for the fork's scope; E-Bilanz removed from
-  the feature list. `readme/README_de.md` is unchanged.
+  `docs/DECISIONS.md`, `legacy/README.md`.
+- `docs/tax-rules.md`: values verified on 2026-11-18 against gesetze-im-internet.de and the BMF
+  form letters (UStVA 2026, Anlage EÜR 2025).
+- `README.md`: rewritten for the fork's goal (free Freiberufler VAT + EÜR tool): status table,
+  roadmap, yearly workflow, category → EÜR Kennzahl table, safety and ELSTER setup. Upstream
+  PyPI/badge/commercial-licensing sections removed; upstream credited under "License and credits".
+  `readme/README_de.md` is unchanged (DOC-1).
