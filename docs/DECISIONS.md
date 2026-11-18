@@ -1,0 +1,17 @@
+# Decisions
+
+Settled questions. Agents follow these and don't reopen them; to change one, the owner edits
+this file. Newest decisions go at the bottom.
+
+| ID | Question | Decision | Why |
+|---|---|---|---|
+| D1 | What is this fork for? | A free replacement for an Accountable subscription for **one Freiberufler**: receipts in → UStVA, annual USt, EÜR → ELSTER, plus outgoing invoices. KSt, GewSt, E-Bilanz, Jahresabschluss and Einkommensteuer are out of scope. | Owner's goal. |
+| D2 | The web UI ships only as a compiled bundle (`ui/static/`), and upstream doesn't publish its source. Edit it? | **No.** Treat the bundle as frozen. New features go into the **CLI first** and the API second. The owner may request the source from upstream (AGPL-3.0 § 6, Corresponding Source); until then a new small UI is a low-priority task (UI-1). | Editing minified JS is unsafe and unreviewable. |
+| D3 | Keep the live-submission gate? | **Yes.** Live filing needs `FINAMT_ALLOW_LIVE_SUBMISSION=1`, which the owner sets locally only when filing. Never set it in tests, CI or code. EÜR live mode stays disabled until EUR-4 is done and tested. | A wrong live filing is legally binding. |
+| D4 | Which ERiC path setting? | **`ERIC_LIBRARY_PATH`** is the one setting. `FINAMT_ERIC_HOME` and the per-project DB value stay as fallbacks for the existing UStVA/USt routes until CFG-1 moves them over. | One documented variable. |
+| D5 | Kz 81/86/35: round or truncate cents? | Keep **truncation** (current code). The official guide only says "volle Euro". Check it once with a real ERiC test submission (UST-5). | No source decides it; truncation is ERiC-safe for integer fields. |
+| D6 | EÜR: net method or VAT as income/expense? | Follow the **official form**: VAT collected (Kz 140), VAT refunds (Kz 141), Vorsteuer paid (Kz 185) and VAT paid to the FA (Kz 186) are part of the profit (EUR-2). | Anlage EÜR 2025 Anleitung, Zeile 17. |
+| D7 | Kleinunternehmer support? | A **per-year flag** in the taxpayer profile. When it is on, all receipts go to Kz 111 at the amount actually received, purchase VAT is an expense, and there is no UStVA (EUR-2). | § 19 UStG; EÜR guide Zeile 12. |
+| D8 | Category → Kennzahl when it is ambiguous? | Don't guess. Put the receipt in `review_lines` with a reason, and keep it out of the profit. The owner decides. | Wrong numbers are worse than missing ones. |
+| D9 | Which form year do the Kennzahlen follow? | The latest official form read: **Anlage EÜR 2025** and **UStVA 2026**. Each new year is a verification task (YEAR-1). | Kennzahlen can change every year. |
+| D10 | Values that need the ELSTER developer login (XSD, element names, `datenartVersion`)? | The owner downloads ERiC with their developer account and keeps the documentation **outside git**, then reports the needed values in an issue or in tax-rules.md. Agents never guess them. | Licence terms; no public source. |
