@@ -12,6 +12,8 @@ self-contained card: goal, verified rules, files, steps, tests and a done-when c
 3. Make small commits: tests and code for the task, then docs (`NOTICE.md`, this file).
 4. When done, set the card status to `done (YYYY-MM-DD)`, move the next card to `ready` if its
    dependencies are met, and update the board.
+5. If a card is `blocked` on the owner, don't work around it: point the owner to the matching step
+   in [MANUAL-STEPS.md](MANUAL-STEPS.md) (M1–M8) and pick the next `ready` card.
 
 Status values: `ready` (can start now), `waiting` (depends on another task), `blocked`
 (needs the owner), `done`.
@@ -30,17 +32,22 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | waiting | UST-2 |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | ready | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
-| 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: § 7 EStG rates and AfA table to verify |
+| 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M5](MANUAL-STEPS.md#m5-decide-asset-depreciation) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
-| 13 | EUR-4 | EÜR ELSTER XML builder | L | blocked | owner: ERiC EÜR XSD + `datenartVersion` (D10) |
-| 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | owner: ERiC + certificate |
+| 13 | EUR-4 | EÜR ELSTER XML builder | L | blocked | owner: [M4](MANUAL-STEPS.md#m4-collect-the-eür-schema-facts-from-eric) |
+| 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | owner: [M1–M3](MANUAL-STEPS.md#m3-first-ustva-test-submission) |
 | 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | ready | — |
 | 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | ready | — |
 | 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 |
 | 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
-| 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published |
-| 20 | UI-1 | Web UI for the fork's scope | L | blocked | owner: frontend source or decision for a new UI (D2) |
+| 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M7](MANUAL-STEPS.md#m7-yearly-form-check)) |
+| 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | waiting | EUR-2, CLI-1 |
+| 21 | UI-2 | UI: receipt upload, edit, review warnings | M | waiting | UI-1 |
+| 22 | UI-3 | UI: UStVA / USt preview, validate, test, live | M | waiting | UI-1, UST-2 |
+| 23 | UI-4 | UI: EÜR year view with "ZU PRÜFEN" list | S | waiting | UI-1, EUR-2 |
+| 24 | UI-5 | UI: invoices | M | waiting | UI-1, INV-1 |
+| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | S | waiting | UI-2 … UI-4, owner OK |
 
 ---
 
@@ -121,7 +128,9 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-5: check rounding and XML with ERiC (owner)
 
-- **Status**: blocked (needs the owner's ERiC library and test certificate) · **Size**: S
+- **Status**: blocked (needs the owner's ERiC library and certificate) · **Size**: S
+- **Owner steps**: [MANUAL-STEPS.md M1–M3](MANUAL-STEPS.md#m3-first-ustva-test-submission). The
+  owner hands back the ERiC result and messages.
 - **Goal**: run `ElsterEricClient.validate_ust` and one test submission for a UStVA with cents in
   the bases. Confirm whether truncation is accepted and whether ERiC reports plausibility hints.
 - **Done when**: result recorded in tax-rules.md rows "truncation" and `_USTVA_KZ_ORDER`; decision
@@ -163,6 +172,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 ### EUR-3: assets above 800 € (AfA / Sammelposten)
 
 - **Status**: blocked · **Size**: M
+- **Owner steps**: [MANUAL-STEPS.md M5](MANUAL-STEPS.md#m5-decide-asset-depreciation).
 - **Owner action**: confirm the depreciation approach (straight-line over the useful life from the
   official AfA tables, or the 1-year rule for computer hardware/software per BMF guidance). An agent
   may then fetch and verify the sources (§ 7 EStG, BMF AfA tables) and add rows to tax-rules.md.
@@ -174,6 +184,9 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 ### EUR-4: EÜR ELSTER XML builder
 
 - **Status**: blocked (D10: needs the ERiC EÜR XSD, element names and `datenartVersion`) · **Size**: L
+- **Owner steps**: [MANUAL-STEPS.md M4](MANUAL-STEPS.md#m4-collect-the-eür-schema-facts-from-eric).
+  The owner hands back a facts list (datenartVersion, Verfahren/DatenArt, root element, element
+  name per Kennzahl, AVEÜR requirement), or runs an agent locally next to the ERiC docs.
 - **Goal**: implement `finamt.tax.eur_elster.build_xml(report)` for the Anlage EÜR.
 - **Files**: `src/finamt/tax/eur_elster.py`, `tests/unit/test_eur_elster.py`, `docs/tax-rules.md`.
 - **Steps**: map `EURReport.kz_totals()` (plus the EUR-2 lines and Kz 159 / 199 totals) to the XSD
@@ -294,7 +307,57 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   Kennzahl row in tax-rules.md, update `FORM_YEAR` in `eur.py` only if nothing changed or after
   adapting the mapping, add rows for the new year.
 
-### UI-1: web UI
+## Web UI (decision D2)
 
-- **Status**: blocked (D2). Options for the owner: (a) request the frontend source from upstream
-  under AGPL, (b) build a minimal new UI on the existing API. Not started until one is chosen.
+Shared rules for all UI cards:
+- Server-rendered pages: FastAPI routes under `/app` in a new package `src/finamt/ui/web/`
+  (`routes.py`, `templates/*.html`, `static/`). Jinja2 is already a dependency; add one vendored
+  htmx file and record its licence in `NOTICE.md`. **No Node/npm build.**
+- Pages call the library directly (`generate_ustva`, `generate_eur`, the repository); don't call
+  the HTTP API from Python.
+- German labels; amounts formatted with `Decimal`; no float maths in templates.
+- Never edit `src/finamt/ui/static/` (the old bundle) or the existing `/tax/...` routes.
+- Each page gets a TestClient test that checks status 200 and the key values in the HTML.
+- The live-submission gate stays: show the "live" button only if
+  `finamt.tax.safety.live_submission_allowed()` is true, and keep the 403 on the backend.
+
+### UI-1: skeleton and receipt list
+
+- **Status**: waiting (EUR-2, CLI-1) · **Size**: M
+- **Goal**: `/app` shows a base layout (navigation: Belege, UStVA, EÜR, Rechnungen), a project
+  selector (projects from `storage.project.list_projects`), and a read-only receipt list filtered by
+  year, period, type and category, with the validation warnings.
+- **Files**: `src/finamt/ui/web/` (new), `src/finamt/ui/api.py` (one `app.include_router(...)` line
+  placed **before** the SPA catch-all route), `tests/unit/test_web_ui.py`.
+- **Done when**: `/app` and `/app/belege` render for an empty and a filled temp DB; the old UI at `/`
+  still works.
+
+### UI-2: receipt upload, edit and review
+
+- **Status**: waiting (UI-1) · **Size**: M
+- **Goal**: upload PDFs (reuse the agent pipeline the existing upload route uses; mock it in tests),
+  edit date, type, category, subcategory, amounts and VAT, delete; show which EÜR line a receipt lands on.
+
+### UI-3: UStVA and annual USt
+
+- **Status**: waiting (UI-1, UST-2) · **Size**: M
+- **Goal**: choose month or quarter; show the Kennzahlen preview from `_ustva_kennzahlen`; buttons
+  for validate, test submission and (only when allowed) live, using `ElsterEricClient`; list past
+  submissions from the project metadata.
+
+### UI-4: EÜR year view
+
+- **Status**: waiting (UI-1, EUR-2) · **Size**: S
+- **Goal**: Kennzahlen table for a year, the "ZU PRÜFEN" list with links to edit each receipt in
+  UI-2, and a JSON download (`EURReport.to_json`).
+
+### UI-5: invoices
+
+- **Status**: waiting (UI-1, INV-1) · **Size**: M
+- **Goal**: create, list and download invoices built by INV-1.
+
+### UI-6: switch over
+
+- **Status**: waiting (UI-2 … UI-4, owner OK) · **Size**: S
+- **Goal**: serve the new UI at `/`, move the old bundle to `/legacy-ui` for one release, then delete
+  it together with the `/tax/ebilanz/*` settings routes it needed. Record it in `NOTICE.md`.
