@@ -58,6 +58,20 @@ Branch `baseline/fable-1`:
   `submit(xml, mode="dry_run"|"test")`. Test mode requires the Testmerker in the XML and reads
   the ERiC directory from `ERIC_LIBRARY_PATH` only. `mode="live"` raises `NotImplementedError`.
 
+### EÜR Kennzahlen (task EUR-1)
+- `src/finamt/tax/eur.py`: the upstream category → Kennzahl mapping did not match the official
+  Anlage EÜR (e.g. 111 is the Kleinunternehmer line, 140 is collected VAT, 145 is Kfz taxes,
+  176 is the commuting allowance). Replaced it with a mapping verified against the
+  Anlage EÜR 2025 (BMF-Schreiben 29.08.2025), including subcategory overrides.
+  Sales: taxable → 112, 0 % → 103, sale of equipment → 102.
+- New `review_lines`: receipts that need a human decision (assets above 800 € net, meals,
+  gifts, donations, health insurance, tax payments, capital movements, sales with unknown VAT)
+  are listed with a reason and no longer counted in the profit. Upstream counted them in
+  Kz 176 / 112.
+- New report fields `form_year`, `warnings` (for years other than 2025), `total_review_netto`.
+- `tests/unit/test_eur.py`: three tests that asserted the old Kennzahlen (165, 183, 176) now
+  assert the verified ones (221, 281, 183). New `tests/unit/test_eur_mapping.py`.
+
 ### Tests
 - Added `tests/unit/test_safety.py`, `tests/unit/test_eur_elster.py`,
   `tests/unit/test_decimal_rule.py` (no `float` in `src/finamt/tax/`) and
