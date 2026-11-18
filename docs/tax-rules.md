@@ -138,6 +138,7 @@ Labels shortened. Where the line number is given, it is the 2025 form line.
 | Kz 223 | Beiträge, Gebühren, Abgaben, Versicherungen (ohne Gebäude/Kfz) | EÜR-2025 | 2025 | verified (2026-11-18) |
 | Kz 228 | Laufende EDV-Kosten | EÜR-2025 | 2025 | verified (2026-11-18) |
 | Kz 229 | Arbeitsmittel (Bürobedarf, Porto, Fachliteratur) | EÜR-2025 | 2025 | verified (2026-11-18) |
+| Kz 227 | Kosten für Verpackung und Transport | EÜR-2025 | 2025 | verified (2026-11-18) |
 | Kz 224 | Werbekosten | EÜR-2025 | 2025 | verified (2026-11-18) |
 | Kz 232 / 234 | Schuldzinsen Anlagevermögen / übrige Schuldzinsen | EÜR-2025 | 2025 | verified (2026-11-18) |
 | Kz 185 | Gezahlte, nach § 15 UStG abziehbare Vorsteuerbeträge | EÜR-2025 | 2025 | verified (2026-11-18) |
