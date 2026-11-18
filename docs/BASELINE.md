@@ -2,7 +2,8 @@
 
 Snapshot of the code as of the `baseline/fable-1` branch (package version 0.26.0).
 Scope of this fork: **UStVA, annual USt and EÜR for a single Freiberufler**.
-Read `AGENTS.md` before changing code. Tax values and their sources: `docs/tax-rules.md`.
+Read `AGENTS.md` before changing code. Tasks: `docs/TODO.md`. Decisions: `docs/DECISIONS.md`.
+Tax values and their sources: `docs/tax-rules.md`.
 
 ## Package map (`src/finamt/`)
 
@@ -15,7 +16,7 @@ Read `AGENTS.md` before changing code. Tax values and their sources: `docs/tax-r
 | `ocr_processor.py` | PDF text extraction (PyMuPDF) with PaddleOCR / Tesseract fallback. |
 | `storage/` | `sqlite.py` (`SQLiteRepository`), `project.py` (`~/.finamt/<project>/` layout), `base.py` (repository protocol), `get_repository()`. |
 | `tax/ustva.py` | `generate_ustva()` → `USTVAReport` (per-rate input/output VAT). |
-| `tax/eur.py` | `generate_eur()` → `EURReport` (EÜR per category, Kennzahl mapping **unverified**, see tax-rules). |
+| `tax/eur.py` | `generate_eur()` → `EURReport`: EÜR lines per Anlage EÜR 2025 Kennzahl (`KZ_LABELS`, `_PURCHASE_KZ`, `_PURCHASE_SUB_KZ`); ambiguous receipts in `review_lines`, excluded from the profit. |
 | `tax/elster.py` | ELSTER XML for UStVA and annual USt (E50), Kz mapping `_ustva_kennzahlen`, signer, HTTP client, ERiC client. |
 | `tax/eric_wrapper.py` | ctypes bridge to the ERiC shared library (`EricSession`, `EricBuffer`, `EricCertificate`). |
 | `tax/eur_elster.py` | EÜR ELSTER boundary: `build_xml` (stub), `validate`, `submit` (dry_run/test only). |
@@ -80,7 +81,8 @@ EÜR is not exposed by the API; the bundled UI computes its EÜR view client-sid
    → `ElsterEricClient.validate_ust()/submit_ust()` (ERiC) (`ElsterClient`, direct HTTP, is not used by CLI/API).
 8. **Annual USt**: same report over the year, `period=0` → `_build_ust_annual_e50()`.
 9. **EÜR**: `repo.find_by_period(Jan 1, Dec 31)` → `generate_eur()` → `EURReport`
-   → `eur_elster.build_xml()` (**not implemented**: Kennzahlen unverified).
+   (category/subcategory → Kennzahl, or `review_lines`) → `eur_elster.build_xml()`
+   (**not implemented**: needs the ERiC EÜR schema, task EUR-4).
 
 Money is `Decimal` throughout `tax/` (see `tests/unit/test_decimal_rule.py`).
 `ReceiptData.to_dict()` emits floats for JSON only; do not feed that back into tax code.
@@ -108,7 +110,7 @@ uv run finamt --help                      # CLI
 ## Known gaps (details in `docs/TODO.md`)
 
 - EÜR ELSTER XML (Kennzahlen not verified), EÜR CLI/API.
-- `eur.py` Kennzahl mapping and category coverage unverified; `capital_movement` / `tax_settlement` not special-cased.
+- EÜR excludes VAT from the profit and has no Kleinunternehmer mode (EUR-2); assets > 800 € go to review (EUR-3).
 - UStVA ignores receipts with no/negative VAT (credit notes, 0 % / reverse-charge sales) and rate `unknown`.
 - `vat_splits` (mixed-rate receipts) are stored but not used by tax code.
 - No invoice generation, no ZM, no reverse-charge flag.
