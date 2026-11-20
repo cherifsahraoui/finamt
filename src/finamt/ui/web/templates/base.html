@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,14 +9,14 @@
 </head>
 <body>
   <div class="shell">
-    <nav class="sidebar" aria-label="Hauptnavigation">
+    <nav class="sidebar" aria-label="{{ _('Hauptnavigation') }}">
       <a class="brand" href="{{ href('') }}">FreiBuch</a>
       <form class="projekt" method="get" action="">
-        <label for="projekt">Projekt</label>
+        <label for="projekt">{{ _("Projekt") }}</label>
         <select id="projekt" name="projekt" onchange="this.form.submit()">
           {% for p in projekte %}<option value="{{ p }}" {% if p == projekt %}selected{% endif %}>{{ p }}</option>{% endfor %}
         </select>
-        <noscript><button type="submit">Wechseln</button></noscript>
+        <noscript><button type="submit">{{ _("Wechseln") }}</button></noscript>
       </form>
       <ul>
         {% for key, label, path in [
@@ -27,12 +27,19 @@
           ("rechnungen", "Rechnungen", "/rechnungen"),
           ("stammdaten", "Stammdaten", "/stammdaten"),
         ] %}
-        <li><a href="{{ href(path) }}" {% if nav == key %}aria-current="page"{% endif %}>{{ label }}</a></li>
+        <li><a href="{{ href(path) }}" {% if nav == key %}aria-current="page"{% endif %}>{{ _(label) }}</a></li>
         {% endfor %}
       </ul>
-      <p class="hint">Alte Oberfläche: <a href="/">/</a></p>
+      <div class="sprache" role="group" aria-label="{{ _('Sprache') }}">
+        {% for code, name in sprachen %}
+        <a href="/app/sprache?lang={{ code }}&amp;zurueck={{ pfad|urlencode }}" hreflang="{{ code }}" lang="{{ code }}"
+           {% if code == lang %}aria-current="true"{% endif %} title="{{ name }}">{{ code|upper }}</a>
+        {% endfor %}
+      </div>
+      <p class="hint">{{ _("Alte Oberfläche:") }} <a href="/">/</a></p>
     </nav>
     <main>
+      {% if not ohne_upload_status %}{% include "_upload_status.html" %}{% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

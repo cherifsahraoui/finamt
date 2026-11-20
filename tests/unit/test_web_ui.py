@@ -32,6 +32,17 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def upload_jobs(monkeypatch):
+    """Upload jobs run inline (no thread) and start from a clean state in every test."""
+    from finamt.ui.web import uploads
+
+    uploads.reset()
+    monkeypatch.setattr(uploads, "_spawn", lambda fn: fn())
+    yield uploads
+    uploads.reset()
+
+
 @pytest.fixture
 def client(home):
     from finamt.ui.api import app
@@ -259,7 +270,8 @@ class TestUpload:
             data={"typ": "sale"},
             files=[("dateien", ("rechnung.pdf", b"%PDF-1.4 test", "application/pdf"))],
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200  # redirected to the job page
+        assert "/app/belege/upload" in str(resp.url)
         assert "gespeichert" in resp.text
         assert _FakeAgent.calls == [(".pdf", "sale")]
         assert "Hochgeladen GmbH" in _get(client, "/app/belege", jahr=2025).text
@@ -292,6 +304,196 @@ class TestUpload:
             files=[("dateien", ("a.pdf", b"%PDF", "application/pdf"))],
         )
         assert "Auslesen fehlgeschlagen: kein Text" in resp.text
+
+
+def _start_running_job(uploads, monkeypatch, n=1):
+    """A job that stays "running": _spawn does nothing."""
+    monkeypatch.setattr(uploads, "_spawn", lambda fn: None)
+    items = [uploads.UploadItem(name=f"r{i}.pdf", path=None) for i in range(n)]
+    uploads.start(PROJEKT, "purchase", items, lambda p, t: (None, "", {}))
+    return items
+
+
+def _upload(client, name="a.pdf"):
+    return client.post(
+        "/app/belege/upload",
+        params={"projekt": PROJEKT},
+        files=[("dateien", (name, b"%PDF", "application/pdf"))],
+    )
+
+
+class TestUploadJob:
+    """The upload runs as a background job: progress on every page, one job at a time."""
+
+    def test_progress_shown_on_other_pages_and_polls(self, client, upload_jobs, monkeypatch):
+        items = _start_running_job(upload_jobs, monkeypatch, n=3)
+        items[0].status = upload_jobs.FERTIG
+        for path in ("/app", "/app/euer", "/app/stammdaten"):
+            html = _get(client, path).text
+            assert "Belege werden ausgelesen: 1 von 3 fertig" in html, path
+            assert 'hx-trigger="every 2s"' in html
+
+    def test_new_upload_refused_while_running(self, client, upload_jobs, monkeypatch):
+        import finamt.ui.api as api
+
+        _start_running_job(upload_jobs, monkeypatch)
+        _FakeAgent.calls = []
+        monkeypatch.setattr(api, "FinanceAgent", _FakeAgent)
+        resp = _upload(client, "b.pdf")
+        assert "Es läuft schon ein Upload" in resp.text
+        assert _FakeAgent.calls == []
+        assert [i.name for i in upload_jobs.current().items] == ["r0.pdf"]
+
+    def test_upload_form_locked_while_running(self, client, upload_jobs, monkeypatch):
+        _start_running_job(upload_jobs, monkeypatch)
+        html = _get(client, "/app/belege").text
+        assert re.search(r"<fieldset[^>]*data-upload-gesperrt[^>]*disabled", html)
+        assert "Gesperrt, bis der laufende Upload fertig ist." in html
+
+    def test_status_partial_stops_polling_when_done(self, client, monkeypatch):
+        import finamt.ui.api as api
+
+        monkeypatch.setattr(api, "FinanceAgent", _FakeAgent)
+        _upload(client)
+        html = _get(client, "/app/belege/upload/status").text
+        assert "Upload fertig:" in html
+        assert "1 gespeichert" in html
+        assert "every 2s" not in html
+        assert not re.search(r"<fieldset[^>]*disabled", _get(client, "/app/belege").text)
+
+    def test_results_stay_until_dismissed(self, client, upload_jobs, monkeypatch):
+        import finamt.ui.api as api
+
+        monkeypatch.setattr(api, "FinanceAgent", _FakeAgent)
+        _upload(client)
+        assert "Upload fertig:" in _get(client, "/app/euer").text
+        job = upload_jobs.current()
+        resp = client.post(
+            "/app/belege/upload/ausblenden",
+            params={"projekt": PROJEKT},
+            data={"job": job.id, "zurueck": "/app/euer?projekt=" + PROJEKT},
+        )
+        assert str(resp.url).endswith("/app/euer?projekt=" + PROJEKT)
+        assert upload_jobs.current() is None
+        assert "Upload fertig:" not in resp.text
+
+    def test_dismiss_ignores_foreign_redirect(self, client):
+        resp = client.post(
+            "/app/belege/upload/ausblenden",
+            params={"projekt": PROJEKT},
+            data={"job": "x", "zurueck": "https://evil.example/"},
+            follow_redirects=False,
+        )
+        assert resp.headers["location"].startswith("/app/belege")
+
+    def test_pipeline_exception_is_reported(self, client, monkeypatch):
+        import finamt.ui.api as api
+
+        class Boom(_FakeAgent):
+            def process_receipt(self, path, receipt_type="purchase"):
+                raise RuntimeError("OCR kaputt")
+
+        monkeypatch.setattr(api, "FinanceAgent", Boom)
+        assert "Fehler: OCR kaputt" in _upload(client).text
+
+
+class TestSprache:
+    def test_default_is_german(self, client):
+        html = _get(client, "/app/belege").text
+        assert '<html lang="de">' in html
+        assert "Belege hochladen" in html
+
+    def test_toggle_sets_cookie_and_returns(self, client):
+        resp = client.get(
+            "/app/sprache",
+            params={"lang": "en", "zurueck": f"/app/belege?projekt={PROJEKT}"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == f"/app/belege?projekt={PROJEKT}"
+        assert "freibuch_lang=en" in resp.headers["set-cookie"]
+
+    def test_english_pages(self, client):
+        client.cookies.set("freibuch_lang", "en")
+        html = _get(client, "/app/belege").text
+        assert '<html lang="en">' in html
+        assert "Upload receipts" in html
+        assert "Belege hochladen" not in html
+        for path, text in (
+            ("/app", "Next VAT return"),
+            ("/app/euer", "Business income"),
+            ("/app/ustva", "Form lines"),
+            ("/app/stammdaten", "Federal state"),
+        ):
+            assert text in _get(client, path).text, path
+
+    def test_toggle_shown_with_current_language(self, client):
+        html = _get(client, "/app").text
+        assert 'href="/app/sprache?lang=en&amp;zurueck=' in html
+        assert re.search(r'hreflang="de"[^>]*aria-current="true"', html)
+
+    def test_unknown_language_falls_back(self, client):
+        client.cookies.set("freibuch_lang", "xx")
+        assert '<html lang="de">' in _get(client, "/app").text
+
+    def test_foreign_redirect_refused(self, client):
+        resp = client.get(
+            "/app/sprache",
+            params={"lang": "en", "zurueck": "//evil.example"},
+            follow_redirects=False,
+        )
+        assert resp.headers["location"] == "/app"
+
+    def test_every_template_text_has_english(self):
+        from pathlib import Path
+
+        from finamt.ui.web import i18n
+
+        tpl = Path(i18n.__file__).parent / "templates"
+        pattern = re.compile(r"""_\(\s*(?:"([^"]+)"|'([^']+)')""")
+        missing = set()
+        for f in tpl.glob("*.html"):
+            for m in pattern.finditer(f.read_text(encoding="utf-8")):
+                key = m.group(1) or m.group(2)
+                if key not in i18n.EN:
+                    missing.add(key)
+        assert not missing, sorted(missing)
+
+    def test_python_side_labels_have_english(self):
+        from finamt.ui.web import i18n, routes
+
+        labels = [*routes.KZ_LABELS.values(), *routes.TYP_LABELS.values()]
+        labels += [v for _k, v in routes.BESTEUERUNGSARTEN] + list(h.EUER_WAHL.values())
+        assert [x for x in labels if x not in i18n.EN] == []
+
+
+class TestKleinunternehmerJahre:
+    def test_saved_years_switch_euer_mode(self, client):
+        _save(_receipt(typ="sale", cat="services", total="1190.00", vat="190.00"))
+        assert ">140</span>" in _get(client, "/app/euer", jahr=2025).text
+        client.post(
+            "/app/stammdaten/kleinunternehmer", params={"projekt": PROJEKT}, data={"jahre": "2025"}
+        )
+        html = _get(client, "/app/euer", jahr=2025).text
+        assert ">111</span>" in html
+        assert ">140</span>" not in html
+        assert "1.190,00 €" in html
+        assert 'value="2025"' in _get(client, "/app/stammdaten").text
+
+    def test_bad_years_show_error(self, client):
+        resp = client.post(
+            "/app/stammdaten/kleinunternehmer", params={"projekt": PROJEKT}, data={"jahre": "25"}
+        )
+        assert "Bitte Jahreszahlen mit vier Ziffern" in resp.text
+
+    def test_period_setting_keeps_years(self, client):
+        client.post(
+            "/app/stammdaten/kleinunternehmer", params={"projekt": PROJEKT}, data={"jahre": "2024"}
+        )
+        client.post(
+            "/app/stammdaten/zeitraum", params={"projekt": PROJEKT}, data={"monatlich": "1"}
+        )
+        assert 'value="2024"' in _get(client, "/app/stammdaten").text
 
 
 class TestEdit:

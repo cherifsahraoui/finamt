@@ -1,0 +1,23 @@
+{#- Receipt input fields, shared by the edit form (beleg.html) and manual entry (belege.html).
+    ``r`` is the receipt being edited, or None for a new one. -#}
+      <label>{{ _("Art") }}
+        <select name="receipt_type">
+          {% for k, v in typen.items() %}<option value="{{ k }}" {% if r and r.receipt_type|string == k %}selected{% endif %}>{{ _(v) }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>{{ _("Datum") }} <input type="date" name="receipt_date" {% if not r %}required{% endif %} value="{{ r.receipt_date.strftime('%Y-%m-%d') if r and r.receipt_date else '' }}"></label>
+      <label class="wide">{{ _("Partner") }} <input name="counterparty_name" {% if not r %}required{% endif %} value="{{ (r.vendor if r else '') or '' }}">
+        {% if r %}<span class="hint">{{ _("Ändert den Namen bei allen Belegen dieses Partners.") }}</span>{% endif %}</label>
+      <label>{{ _("Rechnungsnummer") }} <input name="receipt_number" value="{{ (r.receipt_number if r else '') or '' }}"></label>
+      <label>{{ _("Kategorie") }}
+        <select name="category">
+          {% for k in kategorien %}<option value="{{ k }}" {% if (r and r.category|string == k) or (not r and k == 'other') %}selected{% endif %}>{{ k }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>{{ _("Unterkategorie") }} <input name="subcategory" value="{{ (r.subcategory if r else '') or '' }}"></label>
+      <label>{{ _("Brutto (€)") }} <input name="total_amount" class="num" inputmode="decimal" {% if not r %}required{% endif %} value="{{ r.total_amount|zahl if r else '' }}"></label>
+      <label>{{ _("USt-Satz (%)") }} <input name="vat_percentage" class="num" inputmode="decimal" value="{{ r.vat_percentage|zahl if r else '19' }}"></label>
+      <label>{{ _("USt (€)") }} <input name="vat_amount" class="num" inputmode="decimal" value="{{ r.vat_amount|zahl if r else '' }}" {% if not r %}placeholder="{{ _('leer = aus Satz berechnen') }}"{% endif %}></label>
+      <label>{{ _("Einfuhrumsatzsteuer (€)") }} <input name="einfuhr_vat" class="num" inputmode="decimal" value="{{ r.einfuhr_vat|zahl if r else '' }}"></label>
+      <label>{{ _("Privatanteil (%)") }} <input name="private_use_percent" class="num" inputmode="decimal" value="{{ (r.private_use_share * 100)|zahl if r and r.private_use_share else '' }}"></label>
+      <label class="wide">{{ _("Notiz") }} <input name="description" value="{{ (r.description if r else '') or '' }}"></label>

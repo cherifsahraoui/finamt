@@ -1,59 +1,60 @@
 {% extends "base.html" %}
-{% block title %}EÜR {{ jahr }}{% endblock %}
+{% block title %}{{ _("EÜR") }} {{ jahr }}{% endblock %}
 {% block content %}
-<h1>Einnahmenüberschussrechnung <span class="hint">{{ jahr }}</span></h1>
+<h1>{{ _("Einnahmenüberschussrechnung") }} <span class="hint">{{ jahr }}</span></h1>
 
 <form method="get" action="{{ href('/euer') }}" class="filters">
   <input type="hidden" name="projekt" value="{{ projekt }}">
-  <label>Jahr <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
-  <button type="submit">Anzeigen</button>
-  <a class="button secondary" href="{{ href('/euer/' ~ jahr ~ '.json') }}">JSON herunterladen</a>
+  <label>{{ _("Jahr") }} <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
+  <button type="submit">{{ _("Anzeigen") }}</button>
+  <a class="button secondary" href="{{ href('/euer/' ~ jahr ~ '.json') }}">{{ _("JSON herunterladen") }}</a>
 </form>
 
 {% for w in report.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
 {% if stnr.fehler %}
-<div class="notice warn">Steuernummer für die Anlage EÜR: {{ stnr.fehler }} <a href="{{ href('/stammdaten') }}">Stammdaten öffnen</a></div>
+<div class="notice warn">{{ _("Steuernummer für die Anlage EÜR:") }} {{ _(stnr.fehler) }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten öffnen") }}</a></div>
 {% else %}
-<p class="hint">Abgabe unter Steuernummer <span class="mono">{{ stnr.elster13 }}</span> (Finanzamt {{ stnr.finanzamt_nr }}).</p>
+<p class="hint">{{ _("Abgabe unter Steuernummer") }} <span class="mono">{{ stnr.elster13 }}</span> ({{ _("Finanzamt") }} {{ stnr.finanzamt_nr }}).</p>
 {% endif %}
 
 <div class="split">
   <section class="card">
-    <h2>Betriebseinnahmen</h2>
+    <h2>{{ _("Betriebseinnahmen") }}</h2>
     {% if report.einnahmen_lines %}
     <table class="kv">
       {% for ln in report.einnahmen_lines.values()|sort(attribute="kz") %}
       <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
       {% endfor %}
       {% if report.kz140_ust_vereinnahmt %}<tr><th><span class="mono">140</span> Vereinnahmte Umsatzsteuer</th><td class="num">{{ report.kz140_ust_vereinnahmt|eur }}</td></tr>{% endif %}
-      <tr class="total"><th>Summe</th><td class="num">{{ report.total_betriebseinnahmen|eur }}</td></tr>
+      <tr class="total"><th>{{ _("Summe") }}</th><td class="num">{{ report.total_betriebseinnahmen|eur }}</td></tr>
     </table>
-    {% else %}<p class="empty">Keine Einnahmen.</p>{% endif %}
+    {% else %}<p class="empty">{{ _("Keine Einnahmen.") }}</p>{% endif %}
 
-    <h2>Betriebsausgaben</h2>
+    <h2>{{ _("Betriebsausgaben") }}</h2>
     {% if report.ausgaben_lines %}
     <table class="kv">
       {% for ln in report.ausgaben_lines.values()|sort(attribute="kz") %}
       <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
       {% endfor %}
       {% if report.kz185_vorsteuer %}<tr><th><span class="mono">185</span> Gezahlte Vorsteuerbeträge</th><td class="num">{{ report.kz185_vorsteuer|eur }}</td></tr>{% endif %}
-      <tr class="total"><th>Summe</th><td class="num">{{ report.total_betriebsausgaben|eur }}</td></tr>
+      <tr class="total"><th>{{ _("Summe") }}</th><td class="num">{{ report.total_betriebsausgaben|eur }}</td></tr>
     </table>
-    {% else %}<p class="empty">Keine Ausgaben.</p>{% endif %}
+    {% else %}<p class="empty">{{ _("Keine Ausgaben.") }}</p>{% endif %}
 
     <table class="kv result">
-      <tr class="total"><th>Gewinn (ohne „zu prüfen“)</th><td class="num">{{ report.gewinn|eur }}</td></tr>
+      <tr class="total"><th>{{ _("Gewinn (ohne „zu prüfen“)") }}</th><td class="num">{{ report.gewinn|eur }}</td></tr>
     </table>
-    {% if report.kleinunternehmer %}<p class="hint">Kleinunternehmer (§ 19 UStG): Bruttobeträge, keine Umsatzsteuer-Zeilen.</p>
-    {% else %}<p class="hint">Kategorien netto; die Umsatzsteuer steht in Kz 140 / 185, Zahlungen an und Erstattungen vom Finanzamt in Kz 186 / 141.</p>{% endif %}
+    {% if report.kleinunternehmer %}<p class="hint">{{ _("Kleinunternehmer (§ 19 UStG): Bruttobeträge, keine Umsatzsteuer-Zeilen.") }}</p>
+    {% else %}<p class="hint">{{ _("Kategorien netto; die Umsatzsteuer steht in Kz 140 / 185, Zahlungen an und Erstattungen vom Finanzamt in Kz 186 / 141.") }}</p>{% endif %}
+    {% if lang != "de" %}<p class="hint">{{ _("Die Zeilentexte folgen dem amtlichen Formular und bleiben deutsch.") }}</p>{% endif %}
   </section>
 
   <section class="card {% if zu_pruefen %}accent{% endif %}">
-    <h2>ZU PRÜFEN</h2>
+    <h2>{{ _("ZU PRÜFEN") }}</h2>
     {% if zu_pruefen %}
-    <p>Diese Belege sind nicht im Gewinn, bis du entschieden hast ({{ report.total_review_netto|eur }} netto).</p>
+    <p>{{ _("Diese Belege sind nicht im Gewinn, bis du entschieden hast ({betrag} netto).", betrag=(report.total_review_netto|eur)) }}</p>
     <table class="list">
-      <thead><tr><th>Datum</th><th>Partner</th><th class="num">Netto</th><th>Grund</th></tr></thead>
+      <thead><tr><th>{{ _("Datum") }}</th><th>{{ _("Partner") }}</th><th class="num">{{ _("Netto") }}</th><th>{{ _("Grund") }}</th></tr></thead>
       <tbody>
       {% for r, zeile in zu_pruefen %}
         <tr>
@@ -65,7 +66,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="ok">Nichts offen.</p>{% endif %}
+    {% else %}<p class="ok">{{ _("Nichts offen.") }}</p>{% endif %}
   </section>
 </div>
 {% endblock %}

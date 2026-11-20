@@ -1,21 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Upload{% endblock %}
+{% block title %}{{ _("Upload") }}{% endblock %}
 {% block content %}
-<h1>Upload</h1>
-<table class="list">
-  <thead><tr><th>Datei</th><th>Ergebnis</th></tr></thead>
-  <tbody>
-  {% for name, rid, fehler in ergebnisse %}
-    <tr>
-      <td>{{ name }}</td>
-      <td>
-        {% if rid and not fehler %}<span class="tag ok">gespeichert</span> <a href="{{ href('/belege/' ~ rid) }}">prüfen und bearbeiten</a>
-        {% elif rid %}<span class="tag warn">{{ fehler }}</span> <a href="{{ href('/belege/' ~ rid) }}">vorhandenen Beleg öffnen</a>
-        {% else %}<span class="tag err">{{ fehler }}</span>{% endif %}
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-<p><a class="button" href="{{ href('/belege') }}">Zur Belegliste</a></p>
+<h1>{{ _("Upload") }}</h1>
+{% if besetzt %}
+<div class="notice err" role="alert">{{ _("Es läuft schon ein Upload. Neue Belege können erst hochgeladen werden, wenn er fertig ist.") }}</div>
+{% endif %}
+{% if upload_job %}
+  {% with details = True %}{% include "_upload_status.html" %}{% endwith %}
+{% else %}
+<p class="empty">{{ _("Kein Upload aktiv.") }}</p>
+{% endif %}
+<p><a class="button" href="{{ href('/belege') }}">{{ _("Zur Belegliste") }}</a></p>
 {% endblock %}

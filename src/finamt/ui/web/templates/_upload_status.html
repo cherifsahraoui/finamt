@@ -1,0 +1,52 @@
+{#- Progress box of the background upload job (uploads.py). Shown on every /app page; while the
+    job runs it polls itself every 2 s, so the progress survives page changes. -#}
+{% set job = upload_job %}
+{% if job %}
+{% set q = "projekt=" ~ (job.projekt|urlencode) %}
+<div id="upload-status" role="status" aria-live="polite"
+     class="notice upload-status {{ 'busy' if job.running else ('warn' if job.error_count else 'ok') }}"
+     {% if job.running %}hx-get="/app/belege/upload/status?{{ q }}{% if details %}&amp;details=1{% endif %}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if job.running %}
+    <span class="spinner" aria-hidden="true"></span>
+    <strong>{{ _("Belege werden ausgelesen: {n} von {gesamt} fertig", n=job.done_count, gesamt=job.items|length) }}</strong>
+    <span class="hint">{{ _("Etwa eine Minute pro Beleg. Du kannst weiterarbeiten; neue Uploads sind bis zum Ende gesperrt.") }}</span>
+    {% if not details %}<a href="/app/belege/upload?{{ q }}">{{ _("Details") }}</a>{% endif %}
+  {% else %}
+    <strong>{{ _("Upload fertig:") }}</strong>
+    {{ _("{n} gespeichert", n=job.ok_count) }}{% if job.error_count %}, {{ _("{n} mit Hinweis oder Fehler", n=job.error_count) }}{% endif %}.
+    {% if not details %}<a href="/app/belege/upload?{{ q }}">{{ _("Ergebnis ansehen") }}</a>{% endif %}
+    <form method="post" action="/app/belege/upload/ausblenden?{{ q }}" class="inline">
+      <input type="hidden" name="job" value="{{ job.id }}">
+      <input type="hidden" name="zurueck" value="{{ pfad }}">
+      <button type="submit" class="link">{{ _("Ausblenden") }}</button>
+    </form>
+    {#- the job is over: unlock an upload form that was rendered while it ran -#}
+    <script>
+      document.querySelectorAll("[data-upload-gesperrt]").forEach(function (el) { el.disabled = false; });
+      document.querySelectorAll("[data-upload-sperrhinweis]").forEach(function (el) { el.hidden = true; });
+    </script>
+  {% endif %}
+
+  {% if details %}
+  <table class="list">
+    <thead><tr><th>{{ _("Datei") }}</th><th>{{ _("Ergebnis") }}</th></tr></thead>
+    <tbody>
+    {% for i in job.items %}
+      <tr>
+        <td>{{ i.name }}</td>
+        <td>
+          {% if i.status == "wartet" %}<span class="tag">{{ _("wartet") }}</span>
+          {% elif i.status == "läuft" %}<span class="tag warn">{{ _("wird ausgelesen …") }}</span>
+          {% elif i.receipt_id and not i.fehler %}<span class="tag ok">{{ _("gespeichert") }}</span>
+            <a href="/app/belege/{{ i.receipt_id }}?{{ q }}">{{ _("prüfen und bearbeiten") }}</a>
+          {% elif i.receipt_id %}<span class="tag warn">{{ _(i.fehler, **i.fehler_args) }}</span>
+            <a href="/app/belege/{{ i.receipt_id }}?{{ q }}">{{ _("vorhandenen Beleg öffnen") }}</a>
+          {% else %}<span class="tag err">{{ _(i.fehler, **i.fehler_args) }}</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}

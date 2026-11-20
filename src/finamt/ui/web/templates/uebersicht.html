@@ -1,47 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Übersicht{% endblock %}
+{% block title %}{{ _("Übersicht") }}{% endblock %}
 {% block content %}
-<h1>Übersicht</h1>
+<h1>{{ _("Übersicht") }}</h1>
 
 {% if stammdaten_fehler %}
 <div class="notice warn">
-  ELSTER-Daten fehlen: {{ stammdaten_fehler }} <a href="{{ href('/stammdaten') }}">Stammdaten öffnen</a>
+  {{ _("ELSTER-Daten fehlen:") }} {{ _(stammdaten_fehler) }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten öffnen") }}</a>
 </div>
 {% endif %}
 
 <div class="cards">
   <section class="card accent">
-    <h2>Nächste UStVA</h2>
-    <p class="big">{{ z.label }}</p>
-    <p>Fällig am <strong class="mono">{{ frist|datum }}</strong>
-      {% if tage == 0 %}(heute){% elif tage == 1 %}(morgen){% else %}(in {{ tage }} Tagen){% endif %}</p>
+    <h2>{{ _("Nächste UStVA") }}</h2>
+    <p class="big">{{ zlabel(z) }}</p>
+    <p>{{ _("Fällig am") }} <strong class="mono">{{ frist|datum }}</strong>
+      {% if tage == 0 %}({{ _("heute") }}){% elif tage == 1 %}({{ _("morgen") }}){% else %}({{ _("in {n} Tagen", n=tage) }}){% endif %}</p>
     <p class="mono">
-      {% if report.net_liability >= 0 %}Zahllast {{ report.net_liability|eur }}{% else %}Erstattung {{ (-report.net_liability)|eur }}{% endif %}
+      {% if report.net_liability >= 0 %}{{ _("Zahllast") }} {{ report.net_liability|eur }}{% else %}{{ _("Erstattung") }} {{ (-report.net_liability)|eur }}{% endif %}
     </p>
     {% if submitted %}
-    <p class="ok">Übermittelt (Telenummer {{ submitted[-1].telenummer or "—" }})</p>
+    <p class="ok">{{ _("Übermittelt (Telenummer {t})", t=(submitted[-1].telenummer or "—")) }}</p>
     {% else %}
-    <p><a class="button" href="{{ href('/ustva', jahr=z.jahr, zeitraum=z.key) }}">UStVA öffnen</a></p>
+    <p><a class="button" href="{{ href('/ustva', jahr=z.jahr, zeitraum=z.key) }}">{{ _("UStVA öffnen") }}</a></p>
     {% endif %}
-    <p class="hint">{% if settings.monatlich %}monatlich{% else %}vierteljährlich{% endif %}{% if settings.dauerfrist %}, mit Dauerfristverlängerung{% endif %} · <a href="{{ href('/stammdaten') }}#zeitraum">ändern</a></p>
+    <p class="hint">{% if settings.monatlich %}{{ _("monatlich") }}{% else %}{{ _("vierteljährlich") }}{% endif %}{% if settings.dauerfrist %}, {{ _("mit Dauerfristverlängerung") }}{% endif %} · <a href="{{ href('/stammdaten') }}#zeitraum">{{ _("ändern") }}</a></p>
   </section>
 
   <section class="card">
-    <h2>Zu prüfen</h2>
+    <h2>{{ _("Zu prüfen") }}</h2>
     <p class="big">{{ mit_warnung + review }}</p>
-    <p>{{ mit_warnung }} Beleg(e) mit Warnungen, {{ review }} Beleg(e) ohne sichere EÜR-Zeile ({{ jahr }}).</p>
-    <p><a class="button" href="{{ href('/belege', jahr=jahr, pruefen='1') }}">Belege prüfen</a></p>
+    <p>{{ _("{w} Beleg(e) mit Warnungen, {r} Beleg(e) ohne sichere EÜR-Zeile ({jahr}).", w=mit_warnung, r=review, jahr=jahr) }}</p>
+    <p><a class="button" href="{{ href('/belege', jahr=jahr, pruefen='1') }}">{{ _("Belege prüfen") }}</a></p>
   </section>
 
   <section class="card">
-    <h2>EÜR {{ jahr }} (bisher)</h2>
+    <h2>{{ _("EÜR {jahr} (bisher)", jahr=jahr) }}</h2>
     <table class="kv">
-      <tr><th>Einnahmen (netto)</th><td class="num">{{ eur.total_einnahmen_netto|eur }}</td></tr>
-      <tr><th>Ausgaben (netto)</th><td class="num">{{ eur.total_ausgaben_netto|eur }}</td></tr>
-      <tr class="total"><th>Gewinn</th><td class="num">{{ eur.gewinn|eur }}</td></tr>
+      <tr><th>{{ _("Einnahmen (netto)") }}</th><td class="num">{{ eur.total_einnahmen_netto|eur }}</td></tr>
+      <tr><th>{{ _("Ausgaben (netto)") }}</th><td class="num">{{ eur.total_ausgaben_netto|eur }}</td></tr>
+      <tr class="total"><th>{{ _("Gewinn") }}</th><td class="num">{{ eur.gewinn|eur }}</td></tr>
     </table>
-    <p class="hint">{{ anzahl }} Belege im Jahr {{ jahr }}. Ohne Beträge „zu prüfen“.</p>
-    <p><a href="{{ href('/euer', jahr=jahr) }}">EÜR öffnen</a></p>
+    <p class="hint">{{ _("{n} Belege im Jahr {jahr}. Ohne Beträge „zu prüfen“.", n=anzahl, jahr=jahr) }}</p>
+    <p><a href="{{ href('/euer', jahr=jahr) }}">{{ _("EÜR öffnen") }}</a></p>
   </section>
 </div>
 {% endblock %}

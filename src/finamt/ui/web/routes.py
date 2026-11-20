@@ -11,7 +11,7 @@ import tempfile
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -25,6 +25,7 @@ from finamt.tax.eur import generate_eur
 from finamt.tax.safety import LIVE_SUBMISSION_ENV, live_submission_allowed
 from finamt.tax.ustva import generate_ustva
 from finamt.ui.web import helpers as h
+from finamt.ui.web import i18n, uploads
 
 _HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
@@ -64,6 +65,16 @@ def register(app: FastAPI) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _i18n_ctx(request: Request) -> dict:
+    lang = i18n.lang_from(request)
+    return {
+        "lang": lang,
+        "_": i18n.translator(lang),
+        "zlabel": lambda z: i18n.zeitraum_label(z, lang),
+        "sprachen": i18n.SPRACHEN,
+    }
+
+
 def _render(request: Request, name: str, layout, nav: str, **ctx) -> HTMLResponse:
     projekt = layout.name
 
@@ -75,12 +86,15 @@ def _render(request: Request, name: str, layout, nav: str, **ctx) -> HTMLRespons
         request,
         name,
         {
+            **_i18n_ctx(request),
             "projekt": projekt,
             "projekte": h.project_names(projekt),
             "nav": nav,
             "href": href,
             "live_allowed": live_submission_allowed(),
             "heute": date.today(),
+            "upload_job": uploads.current(),
+            "pfad": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
             **ctx,
         },
     )
@@ -93,7 +107,24 @@ def _redirect(path: str, projekt: str, **params) -> RedirectResponse:
 
 def _settings(layout) -> dict:
     s = h.get_meta(layout, h.SETTINGS_KEY)
-    return {"monatlich": bool(s.get("monatlich")), "dauerfrist": bool(s.get("dauerfrist"))}
+    jahre = sorted(int(j) for j in s.get("kleinunternehmer_jahre") or [] if str(j).isdigit())
+    return {
+        "monatlich": bool(s.get("monatlich")),
+        "dauerfrist": bool(s.get("dauerfrist")),
+        "kleinunternehmer_jahre": jahre,
+    }
+
+
+def _kleinunternehmer(layout, jahr: int) -> bool:
+    """EUR-8 / decision D7: is ``jahr`` a Kleinunternehmer year (§ 19 UStG) in the settings?"""
+    return jahr in _settings(layout)["kleinunternehmer_jahre"]
+
+
+def _merge_settings(layout, **werte) -> None:
+    with h.open_repo(layout, create=True) as repo:
+        s = repo.get_metadata(h.SETTINGS_KEY) or {}
+        s.update(werte)
+        repo.set_metadata(h.SETTINGS_KEY, s)
 
 
 def _receipts(layout, start: date | None = None, end: date | None = None) -> list:
@@ -130,7 +161,9 @@ def uebersicht(request: Request, projekt: str | None = None):
     ]
 
     jahr_receipts = _receipts(layout, date(heute.year, 1, 1), date(heute.year, 12, 31))
-    eur = generate_eur(jahr_receipts, heute.year)
+    eur = generate_eur(
+        jahr_receipts, heute.year, kleinunternehmer=_kleinunternehmer(layout, heute.year)
+    )
     mit_warnung = [r for r in jahr_receipts if r.validation_warnings]
 
     stamm = h.get_meta(layout, h.TAXPAYER_KEY)
@@ -210,41 +243,88 @@ def belege_upload(
     typ: str = Form("purchase"),
     dateien: list[UploadFile] = File(...),
 ):
-    """Run each file through the same agent pipeline as POST /receipts/upload."""
+    """
+    Store the files and read them in a background job (same agent pipeline as
+    POST /receipts/upload). Only one job runs at a time; while it runs this refuses.
+    """
     from finamt.ui import api as _api  # lazy: api.py imports this module
 
     layout = h.resolve(projekt)
+    if uploads.busy():
+        return _redirect("/belege/upload", layout.name, besetzt="1")
     receipt_type = typ if typ in TYP_LABELS else "purchase"
-    ergebnisse = []
+    items: list[uploads.UploadItem] = []
     for upload in dateien:
         name = upload.filename or "Beleg"
         if upload.content_type not in _api.ALLOWED_MIME_TYPES:
-            ergebnisse.append((name, None, f"Dateityp {upload.content_type} nicht erlaubt."))
+            items.append(
+                uploads.UploadItem(
+                    name=name,
+                    path=None,
+                    status=uploads.FERTIG,
+                    fehler="Dateityp {typ} nicht erlaubt.",
+                    fehler_args={"typ": upload.content_type},
+                )
+            )
             continue
         suffix = Path(name).suffix or ".pdf"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(upload.file.read())
-            tmp_path = Path(tmp.name)
-        try:
-            layout.create_dirs()
-            agent = _api.FinanceAgent(
-                db_path=layout.db_path,
-                config=_api._effective_ocr_cfg(),
-                agents_cfg=_api._effective_agents_cfg(),
-            )
-            result = agent.process_receipt(tmp_path, receipt_type=receipt_type)
-        except Exception as exc:  # noqa: BLE001 — show any pipeline error to the user
-            ergebnisse.append((name, None, f"Fehler: {exc}"))
-            continue
-        finally:
-            tmp_path.unlink(missing_ok=True)
+            items.append(uploads.UploadItem(name=name, path=Path(tmp.name)))
+
+    def process(path: Path, rtype: str) -> tuple[str | None, str, dict]:
+        layout.create_dirs()
+        agent = _api.FinanceAgent(
+            db_path=layout.db_path,
+            config=_api._effective_ocr_cfg(),
+            agents_cfg=_api._effective_agents_cfg(),
+        )
+        result = agent.process_receipt(path, receipt_type=rtype)
         if not result.success:
-            ergebnisse.append((name, None, f"Auslesen fehlgeschlagen: {result.error_message}"))
-        elif result.duplicate:
-            ergebnisse.append((name, result.existing_id, "Schon vorhanden (gleicher Inhalt)."))
-        else:
-            ergebnisse.append((name, result.data.id, ""))
-    return _render(request, "upload.html", layout, "belege", ergebnisse=ergebnisse)
+            return None, "Auslesen fehlgeschlagen: {msg}", {"msg": result.error_message}
+        if result.duplicate:
+            return result.existing_id, "Schon vorhanden (gleicher Inhalt).", {}
+        return result.data.id, "", {}
+
+    if uploads.start(layout.name, receipt_type, items, process) is None:
+        # Another request started a job in the meantime: drop our temp files.
+        for item in items:
+            if item.path is not None:
+                item.path.unlink(missing_ok=True)
+        return _redirect("/belege/upload", layout.name, besetzt="1")
+    return _redirect("/belege/upload", layout.name)
+
+
+@router.get("/belege/upload", response_class=HTMLResponse)
+def belege_upload_seite(request: Request, projekt: str | None = None, besetzt: str | None = None):
+    """Progress and results of the current (or last) upload job."""
+    layout = h.resolve(projekt)
+    return _render(
+        request, "upload.html", layout, "belege", besetzt=bool(besetzt), ohne_upload_status=True
+    )
+
+
+@router.get("/belege/upload/status", response_class=HTMLResponse)
+def belege_upload_status(request: Request, projekt: str | None = None, details: str | None = None):
+    """The progress box alone, polled by htmx from every page."""
+    layout = h.resolve(projekt)
+    ctx = {"details": bool(details)}
+    current_url = request.headers.get("HX-Current-URL")
+    if current_url:  # the page the box sits on, so "Ausblenden" returns there
+        parts = urlsplit(current_url)
+        ctx["pfad"] = parts.path + (f"?{parts.query}" if parts.query else "")
+    return _render(request, "_upload_status.html", layout, "belege", **ctx)
+
+
+@router.post("/belege/upload/ausblenden")
+def belege_upload_ausblenden(
+    projekt: str | None = Query(default=None), job: str = Form(""), zurueck: str = Form("")
+):
+    layout = h.resolve(projekt)
+    uploads.dismiss(job)
+    if zurueck.startswith("/app") and "//" not in zurueck:
+        return RedirectResponse(zurueck, status_code=303)
+    return _redirect("/belege", layout.name)
 
 
 def _beleg_or_404(layout, receipt_id: str):
@@ -480,7 +560,7 @@ def euer(request: Request, projekt: str | None = None, jahr: int | None = None):
     layout = h.resolve(projekt)
     jahr = jahr if jahr and 2000 <= jahr <= 2100 else date.today().year - 1
     receipts = _receipts(layout, date(jahr, 1, 1), date(jahr, 12, 31))
-    report = generate_eur(receipts, jahr)
+    report = generate_eur(receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr))
     zu_pruefen = []
     for r in _sort(receipts):
         zeile = h.eur_zeile(r)
@@ -502,12 +582,27 @@ def euer(request: Request, projekt: str | None = None, jahr: int | None = None):
 def euer_json(jahr: int, projekt: str | None = None):
     layout = h.resolve(projekt)
     receipts = _receipts(layout, date(jahr, 1, 1), date(jahr, 12, 31))
-    body = generate_eur(receipts, jahr).to_json()
+    body = generate_eur(receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr)).to_json()
     return Response(
         body,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="euer_{jahr}.json"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Language toggle
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sprache")
+def sprache(lang: str = "de", zurueck: str = "/app"):
+    """Set the UI language cookie and go back to the page the toggle was clicked on."""
+    ziel = zurueck if zurueck.startswith("/app") and "//" not in zurueck else "/app"
+    resp = RedirectResponse(ziel, status_code=303)
+    code = lang if lang in i18n.CODES else i18n.DEFAULT
+    resp.set_cookie(i18n.COOKIE, code, max_age=365 * 24 * 3600, samesite="lax", httponly=True)
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -569,7 +664,9 @@ def stammdaten_steuernummer(
     """htmx partial: the computed ELSTER numbers for one Steuernummer field (``art=est``: ESt)."""
     nr = tax_number_est if art == "est" else tax_number
     info = steuernummer_info(nr, bundesland_by_name(state)) if nr.strip() else None
-    return templates.TemplateResponse(request, "_steuernummer.html", {"info": info, "art": art})
+    return templates.TemplateResponse(
+        request, "_steuernummer.html", {**_i18n_ctx(request), "info": info, "art": art}
+    )
 
 
 @router.post("/stammdaten/steuerpflichtiger")
@@ -643,8 +740,26 @@ def stammdaten_zeitraum(
     dauerfrist: str = Form(""),
 ):
     layout = h.resolve(projekt)
-    with h.open_repo(layout, create=True) as repo:
-        repo.set_metadata(
-            h.SETTINGS_KEY, {"monatlich": monatlich == "1", "dauerfrist": dauerfrist == "1"}
-        )
+    _merge_settings(layout, monatlich=monatlich == "1", dauerfrist=dauerfrist == "1")
     return _redirect("/stammdaten", layout.name, gespeichert="zeitraum")
+
+
+@router.post("/stammdaten/kleinunternehmer", response_class=HTMLResponse)
+def stammdaten_kleinunternehmer(
+    request: Request, projekt: str | None = Query(default=None), jahre: str = Form("")
+):
+    """EUR-8: the years in which the taxpayer is a Kleinunternehmer (§ 19 UStG)."""
+    layout = h.resolve(projekt)
+    teile = [t for t in jahre.replace(";", ",").replace(" ", ",").split(",") if t]
+    if not all(t.isdigit() and len(t) == 4 and 2000 <= int(t) <= 2100 for t in teile):
+        return _render(
+            request,
+            "stammdaten.html",
+            layout,
+            "stammdaten",
+            gespeichert="",
+            ku_fehler="Bitte Jahreszahlen mit vier Ziffern, durch Komma getrennt.",
+            **_stammdaten_context(layout),
+        )
+    _merge_settings(layout, kleinunternehmer_jahre=sorted({int(t) for t in teile}))
+    return _redirect("/stammdaten", layout.name, gespeichert="kleinunternehmer")

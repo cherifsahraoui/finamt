@@ -1,30 +1,30 @@
 {% extends "base.html" %}
-{% block title %}{{ "USt-Erklärung" if z.is_jahr else "UStVA" }}{% endblock %}
+{% block title %}{{ _("USt-Erklärung") if z.is_jahr else _("UStVA") }}{% endblock %}
 {% block content %}
-<h1>{% if z.is_jahr %}Umsatzsteuer-Erklärung{% else %}Umsatzsteuer-Voranmeldung{% endif %} <span class="hint">{{ z.label }}</span></h1>
+<h1>{% if z.is_jahr %}{{ _("Umsatzsteuer-Erklärung") }}{% else %}{{ _("Umsatzsteuer-Voranmeldung") }}{% endif %} <span class="hint">{{ zlabel(z) }}</span></h1>
 
 <form method="get" action="{{ href('/ustva') }}" class="filters">
   <input type="hidden" name="projekt" value="{{ projekt }}">
-  <label>Jahr <input type="number" name="jahr" value="{{ z.jahr }}" min="2000" max="2100" class="short"></label>
-  <label>Zeitraum
+  <label>{{ _("Jahr") }} <input type="number" name="jahr" value="{{ z.jahr }}" min="2000" max="2100" class="short"></label>
+  <label>{{ _("Zeitraum") }}
     <select name="zeitraum">
       {% for k in keys %}<option value="{{ k }}" {% if z.key == k %}selected{% endif %}>{{ k|upper if k.startswith('q') else k[1:] }}</option>{% endfor %}
-      <option value="jahr" {% if z.is_jahr %}selected{% endif %}>Jahreserklärung</option>
+      <option value="jahr" {% if z.is_jahr %}selected{% endif %}>{{ _("Jahreserklärung") }}</option>
     </select>
   </label>
-  <button type="submit">Anzeigen</button>
+  <button type="submit">{{ _("Anzeigen") }}</button>
 </form>
 
 {% if ergebnis %}
 <div class="notice {{ 'ok' if ergebnis.success else 'err' }}" role="status">
   {% if ergebnis.success %}
-    {% if ergebnis.aktion == "pruefen" %}ERiC-Prüfung ohne Fehler. Nichts gesendet.
-    {% elif ergebnis.aktion == "test" %}Testfall gesendet (Testmerker; ELSTER löscht ihn).{% if ergebnis.telenummer %} Telenummer {{ ergebnis.telenummer }}.{% endif %}
-    {% else %}Übermittelt. Telenummer {{ ergebnis.telenummer or "—" }}.{% endif %}
+    {% if ergebnis.aktion == "pruefen" %}{{ _("ERiC-Prüfung ohne Fehler. Nichts gesendet.") }}
+    {% elif ergebnis.aktion == "test" %}{{ _("Testfall gesendet (Testmerker; ELSTER löscht ihn).") }}{% if ergebnis.telenummer %} {{ _("Telenummer") }} {{ ergebnis.telenummer }}.{% endif %}
+    {% else %}{{ _("Übermittelt.") }} {{ _("Telenummer") }} {{ ergebnis.telenummer or "—" }}.{% endif %}
     {% if ergebnis.message and ergebnis.aktion != "pruefen" %}<br>{{ ergebnis.message }}{% endif %}
   {% else %}
-    Nicht übermittelt: {{ ergebnis.message or "unbekannter Fehler" }}{% if ergebnis.error_code %} (Code {{ ergebnis.error_code }}){% endif %}
-    {% if ergebnis.status == 403 %}<br>Live-Übermittlung ist gesperrt. Zum Senden den Server mit <code>{{ live_env }}=1</code> starten.{% endif %}
+    {{ _("Nicht übermittelt:") }} {{ ergebnis.message or _("unbekannter Fehler") }}{% if ergebnis.error_code %} ({{ _("Code") }} {{ ergebnis.error_code }}){% endif %}
+    {% if ergebnis.status == 403 %}<br>{{ _("Live-Übermittlung ist gesperrt. Zum Senden den Server mit dieser Variable starten:") }} <code>{{ live_env }}=1</code>{% endif %}
   {% endif %}
 </div>
 {% endif %}
@@ -32,67 +32,67 @@
 <div class="split">
   <section class="card">
     {% if z.is_jahr %}
-    <h2>Jahreswerte {{ z.jahr }}</h2>
+    <h2>{{ _("Jahreswerte {jahr}", jahr=z.jahr) }}</h2>
     <table class="kv">
       {% for rate, ln in report.lines.items() %}{% if ln.sale_net or ln.sale_vat %}
-      <tr><th>Umsätze {{ rate }} % (netto)</th><td class="num">{{ ln.sale_net|eur }}</td></tr>
-      <tr><th>Umsatzsteuer {{ rate }} %</th><td class="num">{{ ln.sale_vat|eur }}</td></tr>
+      <tr><th>{{ _("Umsätze {rate} % (netto)", rate=rate) }}</th><td class="num">{{ ln.sale_net|eur }}</td></tr>
+      <tr><th>{{ _("Umsatzsteuer {rate} %", rate=rate) }}</th><td class="num">{{ ln.sale_vat|eur }}</td></tr>
       {% endif %}{% endfor %}
-      <tr><th>Vorsteuer</th><td class="num">{{ (report.total_input_vat - report.einfuhr_vat)|eur }}</td></tr>
-      {% if report.einfuhr_vat %}<tr><th>Einfuhrumsatzsteuer</th><td class="num">{{ report.einfuhr_vat|eur }}</td></tr>{% endif %}
-      <tr class="total"><th>Umsatzsteuer − Vorsteuer</th><td class="num">{{ report.net_liability|eur }}</td></tr>
+      <tr><th>{{ _("Vorsteuer") }}</th><td class="num">{{ (report.total_input_vat - report.einfuhr_vat)|eur }}</td></tr>
+      {% if report.einfuhr_vat %}<tr><th>{{ _("Einfuhrumsatzsteuer") }}</th><td class="num">{{ report.einfuhr_vat|eur }}</td></tr>{% endif %}
+      <tr class="total"><th>{{ _("Umsatzsteuer − Vorsteuer") }}</th><td class="num">{{ report.net_liability|eur }}</td></tr>
     </table>
-    <p class="hint">Die bereits gezahlten Vorauszahlungen (Vorauszahlungssoll) trägst du unten ein; sie werden mitgesendet.</p>
+    <p class="hint">{{ _("Die bereits gezahlten Vorauszahlungen (Vorauszahlungssoll) trägst du unten ein; sie werden mitgesendet.") }}</p>
     {% else %}
-    <h2>Kennzahlen</h2>
-    <p class="hint">Fällig am <span class="mono">{{ frist|datum }}</span></p>
+    <h2>{{ _("Kennzahlen") }}</h2>
+    <p class="hint">{{ _("Fällig am") }} <span class="mono">{{ frist|datum }}</span></p>
     {% if kz %}
     <table class="kv">
       {% for name, value in kz.items() %}
-      <tr {% if name == "Kz83" %}class="total"{% endif %}><th><span class="mono">{{ name[2:] }}</span> {{ kz_labels.get(name, "") }}</th><td class="num">{{ value }}</td></tr>
+      <tr {% if name == "Kz83" %}class="total"{% endif %}><th><span class="mono">{{ name[2:] }}</span> {{ _(kz_labels.get(name, "")) }}</th><td class="num">{{ value }}</td></tr>
       {% endfor %}
     </table>
-    {% else %}<p class="empty">Keine umsatzsteuerlichen Belege in diesem Zeitraum.</p>{% endif %}
+    {% else %}<p class="empty">{{ _("Keine umsatzsteuerlichen Belege in diesem Zeitraum.") }}</p>{% endif %}
     {% endif %}
-    <p class="hint">{{ report.total_receipts }} Beleg(e){% if report.skipped_count %}, {{ report.skipped_count }} ohne USt nicht berücksichtigt{% endif %}. <a href="{{ href('/belege', jahr=z.jahr, zeitraum=('' if z.is_jahr else z.key)) }}">Belege ansehen</a></p>
+    <p class="hint">{{ _("{n} Beleg(e)", n=report.total_receipts) }}{% if report.skipped_count %}, {{ _("{n} ohne USt nicht berücksichtigt", n=report.skipped_count) }}{% endif %}. <a href="{{ href('/belege', jahr=z.jahr, zeitraum=('' if z.is_jahr else z.key)) }}">{{ _("Belege ansehen") }}</a></p>
   </section>
 
   <section class="card">
-    <h2>An ELSTER</h2>
+    <h2>{{ _("An ELSTER") }}</h2>
     <form method="post" action="{{ href('/ustva') }}" class="stack">
       <input type="hidden" name="jahr" value="{{ z.jahr }}">
       <input type="hidden" name="zeitraum" value="{{ z.key }}">
       {% if z.is_jahr %}
-      <label>Besteuerungsart
-        <select name="besteuerungsart">{% for k, v in besteuerungsarten %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <label>{{ _("Besteuerungsart") }}
+        <select name="besteuerungsart">{% for k, v in besteuerungsarten %}<option value="{{ k }}">{{ _(v) }}</option>{% endfor %}</select>
       </label>
-      <label>Vorauszahlungssoll (€) <input name="vorauszahlungssoll" class="num" inputmode="decimal" placeholder="0,00"></label>
+      <label>{{ _("Vorauszahlungssoll (€)") }} <input name="vorauszahlungssoll" class="num" inputmode="decimal" placeholder="0,00"></label>
       {% else %}
-      <label class="check"><input type="checkbox" name="berichtigung" value="1"> Berichtigte Anmeldung</label>
+      <label class="check"><input type="checkbox" name="berichtigung" value="1"> {{ _("Berichtigte Anmeldung") }}</label>
       {% endif %}
       <div class="actions">
-        <button type="submit" name="aktion" value="pruefen">Mit ERiC prüfen</button>
-        <button type="submit" name="aktion" value="test">Testfall senden</button>
+        <button type="submit" name="aktion" value="pruefen">{{ _("Mit ERiC prüfen") }}</button>
+        <button type="submit" name="aktion" value="test">{{ _("Testfall senden") }}</button>
         {% if live_allowed %}
         <button type="submit" name="aktion" value="live" class="danger"
-          onclick="return confirm('Rechtsverbindlich an das Finanzamt senden?')">Verbindlich senden</button>
+          onclick="return confirm('{{ _('Rechtsverbindlich an das Finanzamt senden?') }}')">{{ _("Verbindlich senden") }}</button>
         {% endif %}
       </div>
-      {% if not live_allowed %}<p class="hint">Verbindliches Senden ist aus. Es wird nur angeboten, wenn der Server mit <code>{{ live_env }}=1</code> läuft.</p>{% endif %}
-      <p class="hint">Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den <a href="{{ href('/stammdaten') }}">Stammdaten</a>.</p>
+      {% if not live_allowed %}<p class="hint">{{ _("Verbindliches Senden ist aus. Es wird nur angeboten, wenn der Server mit dieser Variable läuft:") }} <code>{{ live_env }}=1</code></p>{% endif %}
+      <p class="hint">{{ _("Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den Stammdaten:") }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten") }}</a></p>
     </form>
 
-    <h2>Übermittlungen</h2>
+    <h2>{{ _("Übermittlungen") }}</h2>
     {% if submissions %}
     <table class="list">
-      <thead><tr><th>Art</th><th>Jahr</th><th>Zeitpunkt (UTC)</th><th>Telenummer</th></tr></thead>
+      <thead><tr><th>{{ _("Art") }}</th><th>{{ _("Jahr") }}</th><th>{{ _("Zeitpunkt (UTC)") }}</th><th>{{ _("Telenummer") }}</th></tr></thead>
       <tbody>
       {% for s in submissions %}
         <tr><td class="mono">{{ s.type }}</td><td class="mono">{{ s.year }}</td><td class="mono">{{ (s.submitted_at or "")[:16]|replace("T", " ") }}</td><td class="mono">{{ s.telenummer or "—" }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="empty">Noch keine verbindliche Übermittlung. Testfälle werden nicht gespeichert.</p>{% endif %}
+    {% else %}<p class="empty">{{ _("Noch keine verbindliche Übermittlung. Testfälle werden nicht gespeichert.") }}</p>{% endif %}
   </section>
 </div>
 {% endblock %}

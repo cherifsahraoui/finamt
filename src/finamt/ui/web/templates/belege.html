@@ -1,73 +1,78 @@
 {% extends "base.html" %}
-{% block title %}Belege{% endblock %}
+{% block title %}{{ _("Belege") }}{% endblock %}
 {% block content %}
-<h1>Belege</h1>
-{% if meldung %}<div class="notice ok">{{ meldung }}</div>{% endif %}
+<h1>{{ _("Belege") }}</h1>
+{% if meldung %}<div class="notice ok">{{ _(meldung) }}</div>{% endif %}
 
+{% set gesperrt = upload_job and upload_job.running %}
 <section class="card">
-  <h2>Belege hochladen</h2>
-  <form method="post" action="{{ href('/belege/upload') }}" enctype="multipart/form-data" class="row">
-    <input type="file" name="dateien" multiple required accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff">
-    <select name="typ" aria-label="Art">
-      <option value="purchase">Ausgabe (Eingangsrechnung)</option>
-      <option value="sale">Einnahme (Ausgangsrechnung)</option>
-    </select>
-    <button type="submit" onclick="this.form.querySelector('.busy').hidden=false">Hochladen und auslesen</button>
-    <span class="busy hint" hidden>Belege werden ausgelesen. Das dauert pro Beleg etwa eine Minute …</span>
+  <h2>{{ _("Belege hochladen") }}</h2>
+  <form method="post" action="{{ href('/belege/upload') }}" enctype="multipart/form-data" class="row"
+        onsubmit="var b=this.querySelector('button[type=submit]'); b.disabled=true; this.querySelector('.busy').hidden=false;">
+    <fieldset class="row plain" data-upload-gesperrt {% if gesperrt %}disabled{% endif %}>
+      <input type="file" name="dateien" multiple required accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff">
+      <select name="typ" aria-label="{{ _('Art') }}">
+        <option value="purchase">{{ _("Ausgabe (Eingangsrechnung)") }}</option>
+        <option value="sale">{{ _("Einnahme (Ausgangsrechnung)") }}</option>
+      </select>
+      <button type="submit">{{ _("Hochladen und auslesen") }}</button>
+    </fieldset>
+    <span class="busy hint" hidden>{{ _("Dateien werden übertragen …") }}</span>
   </form>
+  {% if gesperrt %}<p class="hint" data-upload-sperrhinweis>{{ _("Gesperrt, bis der laufende Upload fertig ist.") }}</p>{% endif %}
 </section>
 
 <form method="get" action="{{ href('/belege') }}" class="filters">
   <input type="hidden" name="projekt" value="{{ projekt }}">
-  <label>Jahr <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
-  <label>Zeitraum
+  <label>{{ _("Jahr") }} <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
+  <label>{{ _("Zeitraum") }}
     <select name="zeitraum">
-      <option value="">ganzes Jahr</option>
+      <option value="">{{ _("ganzes Jahr") }}</option>
       {% for q in range(1, 5) %}<option value="q{{ q }}" {% if zeitraum == 'q' ~ q %}selected{% endif %}>Q{{ q }}</option>{% endfor %}
       {% for m in range(1, 13) %}{% set k = 'm%02d' % m %}<option value="{{ k }}" {% if zeitraum == k %}selected{% endif %}>{{ '%02d' % m }}</option>{% endfor %}
     </select>
   </label>
-  <label>Art
+  <label>{{ _("Art") }}
     <select name="typ">
-      <option value="">alle</option>
-      {% for k, v in typen.items() %}<option value="{{ k }}" {% if typ == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      <option value="">{{ _("alle") }}</option>
+      {% for k, v in typen.items() %}<option value="{{ k }}" {% if typ == k %}selected{% endif %}>{{ _(v) }}</option>{% endfor %}
     </select>
   </label>
-  <label>Kategorie
+  <label>{{ _("Kategorie") }}
     <select name="kategorie">
-      <option value="">alle</option>
+      <option value="">{{ _("alle") }}</option>
       {% for k in kategorien %}<option value="{{ k }}" {% if kategorie == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
     </select>
   </label>
-  <label class="check"><input type="checkbox" name="pruefen" value="1" {% if pruefen %}checked{% endif %}> nur zu prüfen</label>
-  <button type="submit">Filtern</button>
+  <label class="check"><input type="checkbox" name="pruefen" value="1" {% if pruefen %}checked{% endif %}> {{ _("nur zu prüfen") }}</label>
+  <button type="submit">{{ _("Filtern") }}</button>
 </form>
 
 {% if rows %}
 <table class="list">
   <thead>
-    <tr><th>Datum</th><th>Partner</th><th>Art</th><th>Kategorie</th><th class="num">Netto</th><th class="num">USt</th><th class="num">Brutto</th><th>EÜR-Zeile</th><th>Hinweise</th></tr>
+    <tr><th>{{ _("Datum") }}</th><th>{{ _("Partner") }}</th><th>{{ _("Art") }}</th><th>{{ _("Kategorie") }}</th><th class="num">{{ _("Netto") }}</th><th class="num">{{ _("USt") }}</th><th class="num">{{ _("Brutto") }}</th><th>{{ _("EÜR-Zeile") }}</th><th>{{ _("Hinweise") }}</th></tr>
   </thead>
   <tbody>
   {% for r, zeile in rows %}
     <tr>
       <td class="mono"><a href="{{ href('/belege/' ~ r.id) }}">{{ r.receipt_date|datum }}</a></td>
       <td><a href="{{ href('/belege/' ~ r.id) }}">{{ r.vendor or "—" }}</a></td>
-      <td>{{ typen.get(r.receipt_type|string, r.receipt_type) }}</td>
+      <td>{{ _(typen.get(r.receipt_type|string, r.receipt_type|string)) }}</td>
       <td>{{ r.category }}{% if r.subcategory %} / {{ r.subcategory }}{% endif %}</td>
       <td class="num">{{ r.net_amount|eur }}</td>
       <td class="num">{{ r.vat_amount|eur }}</td>
       <td class="num">{{ r.total_amount|eur }}</td>
-      <td>{% if zeile %}{% if zeile.zu_pruefen %}<span class="tag warn" title="{{ zeile.reason }}">ZU PRÜFEN</span>{% else %}<span class="mono">Kz {{ zeile.kz }}</span>{% endif %}{% else %}—{% endif %}</td>
+      <td>{% if zeile %}{% if zeile.zu_pruefen %}<span class="tag warn" title="{{ zeile.reason }}">{{ _("ZU PRÜFEN") }}</span>{% else %}<span class="mono">Kz {{ zeile.kz }}</span>{% endif %}{% else %}—{% endif %}</td>
       <td>{% for w in r.validation_warnings %}<span class="tag err">{{ w }}</span> {% endfor %}</td>
     </tr>
   {% endfor %}
   </tbody>
   <tfoot>
-    <tr><th colspan="4">{{ rows|length }} Beleg(e)</th><td class="num">{{ summe_netto|eur }}</td><td class="num">{{ summe_ust|eur }}</td><td colspan="3"></td></tr>
+    <tr><th colspan="4">{{ _("{n} Beleg(e)", n=rows|length) }}</th><td class="num">{{ summe_netto|eur }}</td><td class="num">{{ summe_ust|eur }}</td><td colspan="3"></td></tr>
   </tfoot>
 </table>
 {% else %}
-<p class="empty">Keine Belege für diese Auswahl.</p>
+<p class="empty">{{ _("Keine Belege für diese Auswahl.") }}</p>
 {% endif %}
 {% endblock %}

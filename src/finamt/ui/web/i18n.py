@@ -1,0 +1,397 @@
+"""
+Language toggle for the ``/app`` UI (German default, English optional).
+
+Templates call ``_("German text", **args)``: the German text is the key; in English mode it is
+looked up in :data:`EN`, otherwise (or when missing) the German text is used. ``args`` fill
+``{name}`` placeholders after translation.
+
+Deliberately **not** translated: official form wording that the user files in German —
+Anlage EÜR line labels and review reasons from ``finamt.tax.eur``, receipt category keys, and
+messages computed with dynamic parts deep in the tax code (they fall back to German).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+COOKIE = "freibuch_lang"
+DEFAULT = "de"
+#: (code, name in its own language)
+SPRACHEN: tuple[tuple[str, str], ...] = (("de", "Deutsch"), ("en", "English"))
+CODES = frozenset(code for code, _name in SPRACHEN)
+
+MONATE_EN = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)  # fmt: skip
+
+EN: dict[str, str] = {
+    # navigation and layout
+    "Hauptnavigation": "Main navigation",
+    "Projekt": "Project",
+    "Wechseln": "Switch",
+    "Sprache": "Language",
+    "Alte Oberfläche:": "Old interface:",
+    "Übersicht": "Overview",
+    "Belege": "Receipts",
+    "UStVA": "VAT return (UStVA)",
+    "EÜR": "EÜR (profit)",
+    "Rechnungen": "Invoices",
+    "Stammdaten": "Settings",
+    # shared words
+    "Art": "Type",
+    "Datum": "Date",
+    "Partner": "Partner",
+    "Kategorie": "Category",
+    "Unterkategorie": "Subcategory",
+    "Rechnungsnummer": "Invoice number",
+    "Brutto (€)": "Gross (€)",
+    "USt-Satz (%)": "VAT rate (%)",
+    "USt (€)": "VAT (€)",
+    "Einfuhrumsatzsteuer (€)": "Import VAT (€)",
+    "Privatanteil (%)": "Private share (%)",
+    "Notiz": "Note",
+    "Jahr": "Year",
+    "Zeitraum": "Period",
+    "ganzes Jahr": "whole year",
+    "alle": "all",
+    "Netto": "Net",
+    "USt": "VAT",
+    "Brutto": "Gross",
+    "Hinweise": "Notes",
+    "Speichern": "Save",
+    "Gespeichert.": "Saved.",
+    "gespeichert": "saved",
+    "Anzeigen": "Show",
+    "Filtern": "Filter",
+    "Summe": "Total",
+    "Grund": "Reason",
+    "Finanzamt": "Tax office",
+    "Ausgabe": "Expense",
+    "Einnahme": "Income",
+    "ZU PRÜFEN": "TO REVIEW",
+    "Zu prüfen": "To review",
+    "{n} Beleg(e)": "{n} receipt(s)",
+    "Stammdaten öffnen": "Open settings",
+    "Ändert den Namen bei allen Belegen dieses Partners.": (
+        "Renames the partner on all of their receipts."
+    ),
+    "leer = aus Satz berechnen": "empty = computed from the rate",
+    # receipts list
+    "Belege hochladen": "Upload receipts",
+    "Ausgabe (Eingangsrechnung)": "Expense (incoming invoice)",
+    "Einnahme (Ausgangsrechnung)": "Income (outgoing invoice)",
+    "Hochladen und auslesen": "Upload and read",
+    "Dateien werden übertragen …": "Transferring files …",
+    "Gesperrt, bis der laufende Upload fertig ist.": (
+        "Locked until the running upload has finished."
+    ),
+    "nur zu prüfen": "only to review",
+    "EÜR-Zeile": "EÜR line",
+    "Keine Belege für diese Auswahl.": "No receipts for this selection.",
+    "Beleg gelöscht.": "Receipt deleted.",
+    "Beleg angelegt.": "Receipt added.",
+    "Beleg manuell erfassen": "Add a receipt manually",
+    "Ohne Datei, z. B. für Kleinbeträge oder Belege, die nur auf Papier vorliegen.": (
+        "Without a file, e.g. for small amounts or paper-only receipts."
+    ),
+    "Anlegen": "Add",
+    # upload job
+    "Upload": "Upload",
+    "Belege werden ausgelesen: {n} von {gesamt} fertig": "Reading receipts: {n} of {gesamt} done",
+    "Etwa eine Minute pro Beleg. Du kannst weiterarbeiten; neue Uploads sind bis zum Ende gesperrt.": (
+        "About one minute per receipt. You can keep working; new uploads are locked until it ends."
+    ),
+    "Details": "Details",
+    "Upload fertig:": "Upload finished:",
+    "{n} gespeichert": "{n} saved",
+    "{n} mit Hinweis oder Fehler": "{n} with a note or error",
+    "Ergebnis ansehen": "See result",
+    "Ausblenden": "Dismiss",
+    "Datei": "File",
+    "Ergebnis": "Result",
+    "wartet": "waiting",
+    "wird ausgelesen …": "reading …",
+    "prüfen und bearbeiten": "review and edit",
+    "vorhandenen Beleg öffnen": "open existing receipt",
+    "Es läuft schon ein Upload. Neue Belege können erst hochgeladen werden, wenn er fertig ist.": (
+        "An upload is already running. New receipts can be uploaded once it has finished."
+    ),
+    "Kein Upload aktiv.": "No upload running.",
+    "Zur Belegliste": "To the receipt list",
+    "Dateityp {typ} nicht erlaubt.": "File type {typ} not allowed.",
+    "Auslesen fehlgeschlagen: {msg}": "Reading failed: {msg}",
+    "Schon vorhanden (gleicher Inhalt).": "Already stored (same content).",
+    "Fehler: {exc}": "Error: {exc}",
+    # one receipt
+    "Beleg": "Receipt",
+    "Dieser Beleg zählt nicht zum Gewinn, bis die Kategorie eindeutig ist.": (
+        "This receipt is not part of the profit until its category is clear."
+    ),
+    "kein Datum": "no date",
+    "Daten": "Data",
+    "Beleg wirklich löschen?": "Really delete this receipt?",
+    "Beleg löschen": "Delete receipt",
+    "Original": "Original",
+    "Beleg-Original": "Original receipt",
+    "In neuem Tab öffnen": "Open in a new tab",
+    "Kein Original (manuell erfasst).": "No original (entered manually).",
+    # overview
+    "ELSTER-Daten fehlen:": "ELSTER data missing:",
+    "Nächste UStVA": "Next VAT return",
+    "Fällig am": "Due on",
+    "heute": "today",
+    "morgen": "tomorrow",
+    "in {n} Tagen": "in {n} days",
+    "Zahllast": "Payable",
+    "Erstattung": "Refund",
+    "Übermittelt (Telenummer {t})": "Submitted (Telenummer {t})",
+    "UStVA öffnen": "Open VAT return",
+    "monatlich": "monthly",
+    "vierteljährlich": "quarterly",
+    "mit Dauerfristverlängerung": "with permanent extension",
+    "ändern": "change",
+    "{w} Beleg(e) mit Warnungen, {r} Beleg(e) ohne sichere EÜR-Zeile ({jahr}).": (
+        "{w} receipt(s) with warnings, {r} receipt(s) without a certain EÜR line ({jahr})."
+    ),
+    "Belege prüfen": "Review receipts",
+    "EÜR {jahr} (bisher)": "EÜR {jahr} (so far)",
+    "Einnahmen (netto)": "Income (net)",
+    "Ausgaben (netto)": "Expenses (net)",
+    "Gewinn": "Profit",
+    "{n} Belege im Jahr {jahr}. Ohne Beträge „zu prüfen“.": (
+        "{n} receipts in {jahr}. Without amounts “to review”."
+    ),
+    "EÜR öffnen": "Open EÜR",
+    # EÜR
+    "Einnahmenüberschussrechnung": "Income surplus statement (EÜR)",
+    "JSON herunterladen": "Download JSON",
+    "Steuernummer für die Anlage EÜR:": "Tax number for the Anlage EÜR:",
+    "Abgabe unter Steuernummer": "Filed under tax number",
+    "Betriebseinnahmen": "Business income",
+    "Keine Einnahmen.": "No income.",
+    "Betriebsausgaben": "Business expenses",
+    "Keine Ausgaben.": "No expenses.",
+    "Gewinn (ohne „zu prüfen“)": "Profit (without “to review”)",
+    "Kleinunternehmer (§ 19 UStG): Bruttobeträge, keine Umsatzsteuer-Zeilen.": (
+        "Small business (§ 19 UStG): gross amounts, no VAT lines."
+    ),
+    "Kategorien netto; die Umsatzsteuer steht in Kz 140 / 185, Zahlungen an und Erstattungen vom Finanzamt in Kz 186 / 141.": (
+        "Categories net; VAT is in Kz 140 / 185, payments to and refunds from the tax office in "
+        "Kz 186 / 141."
+    ),
+    "Die Zeilentexte folgen dem amtlichen Formular und bleiben deutsch.": (
+        "Line texts follow the official form and stay in German."
+    ),
+    "Diese Belege sind nicht im Gewinn, bis du entschieden hast ({betrag} netto).": (
+        "These receipts are not in the profit until you decide ({betrag} net)."
+    ),
+    "Nichts offen.": "Nothing open.",
+    # invoices
+    "Ausgangsrechnungen mit fortlaufender Nummer (§ 14 UStG) kommen mit Aufgabe INV-1.": (
+        "Outgoing invoices with sequential numbers (§ 14 UStG) come with task INV-1."
+    ),
+    "Bis dahin: Ausgangsrechnungen als Beleg der Art „Einnahme“ hochladen.": (
+        "Until then, upload outgoing invoices as receipts of type “Income”."
+    ),
+    # UStVA
+    "USt-Erklärung": "Annual VAT return",
+    "Umsatzsteuer-Erklärung": "Annual VAT return",
+    "Umsatzsteuer-Voranmeldung": "VAT pre-return (UStVA)",
+    "Jahreserklärung": "Annual return",
+    "ERiC-Prüfung ohne Fehler. Nichts gesendet.": "ERiC check without errors. Nothing sent.",
+    "Testfall gesendet (Testmerker; ELSTER löscht ihn).": (
+        "Test case sent (test marker; ELSTER deletes it)."
+    ),
+    "Telenummer": "Telenummer",
+    "Übermittelt.": "Submitted.",
+    "Nicht übermittelt:": "Not submitted:",
+    "unbekannter Fehler": "unknown error",
+    "Code": "Code",
+    "Live-Übermittlung ist gesperrt. Zum Senden den Server mit dieser Variable starten:": (
+        "Live submission is locked. To send, start the server with this variable:"
+    ),
+    "Jahreswerte {jahr}": "Annual figures {jahr}",
+    "Umsätze {rate} % (netto)": "Sales {rate} % (net)",
+    "Umsatzsteuer {rate} %": "VAT {rate} %",
+    "Vorsteuer": "Input VAT",
+    "Einfuhrumsatzsteuer": "Import VAT",
+    "Umsatzsteuer − Vorsteuer": "VAT − input VAT",
+    "Die bereits gezahlten Vorauszahlungen (Vorauszahlungssoll) trägst du unten ein; sie werden mitgesendet.": (
+        "Enter the advance payments already made (Vorauszahlungssoll) below; they are sent along."
+    ),
+    "Kennzahlen": "Form lines (Kennzahlen)",
+    "Keine umsatzsteuerlichen Belege in diesem Zeitraum.": "No VAT receipts in this period.",
+    "{n} ohne USt nicht berücksichtigt": "{n} without VAT not counted",
+    "Belege ansehen": "See receipts",
+    "An ELSTER": "To ELSTER",
+    "Besteuerungsart": "Taxation method",
+    "Vorauszahlungssoll (€)": "Advance payments made (€)",
+    "Berichtigte Anmeldung": "Corrected return",
+    "Mit ERiC prüfen": "Check with ERiC",
+    "Testfall senden": "Send test case",
+    "Rechtsverbindlich an das Finanzamt senden?": "Send legally binding to the tax office?",
+    "Verbindlich senden": "Send for real",
+    "Verbindliches Senden ist aus. Es wird nur angeboten, wenn der Server mit dieser Variable läuft:": (
+        "Sending for real is off. It is only offered when the server runs with this variable:"
+    ),
+    "Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den Stammdaten:": (
+        "Tax number, Hersteller-ID, certificate and ERiC path come from the settings:"
+    ),
+    "Übermittlungen": "Submissions",
+    "Zeitpunkt (UTC)": "Time (UTC)",
+    "Noch keine verbindliche Übermittlung. Testfälle werden nicht gespeichert.": (
+        "No binding submission yet. Test cases are not stored."
+    ),
+    "XML herunterladen": "Download XML",
+    "Archiv": "Archive",
+    "Abgegebene Erklärungen": "Submitted returns",
+    "Keine archivierten Erklärungen.": "No archived returns.",
+    # UStVA Kennzahl labels (ui/web/routes.py KZ_LABELS)
+    "Umsätze 19 % (Bemessungsgrundlage, volle Euro)": "Sales at 19 % (tax base, whole euros)",
+    "Umsätze 7 % (Bemessungsgrundlage, volle Euro)": "Sales at 7 % (tax base, whole euros)",
+    "Umsätze zu anderen Steuersätzen (Bemessungsgrundlage)": "Sales at other rates (tax base)",
+    "Steuer zu anderen Steuersätzen": "Tax at other rates",
+    "Vorsteuer aus Rechnungen anderer Unternehmer": "Input VAT from other businesses' invoices",
+    "Verbleibende Vorauszahlung (+) / Überschuss (−)": "Remaining payment (+) / surplus (−)",
+    "Sollversteuerung (vereinbarte Entgelte)": "Accrual basis (agreed consideration)",
+    "Istversteuerung (vereinnahmte Entgelte)": "Cash basis (received consideration)",
+    "teils Soll-, teils Istversteuerung": "partly accrual, partly cash basis",
+    # Stammdaten
+    "Steuerpflichtige Person": "Taxpayer",
+    "Gespeichertes Bundesland „{land}“ ist nicht eindeutig. Bitte unten auswählen.": (
+        "The stored federal state “{land}” is ambiguous. Please choose it below."
+    ),
+    "Name": "Name",
+    "Straße und Hausnummer": "Street and house number",
+    "Adresszusatz": "Address line 2",
+    "PLZ": "Postcode",
+    "Ort": "City",
+    "Bundesland": "Federal state",
+    "bitte wählen": "please choose",
+    "Steuernummer für die Umsatzsteuer": "Tax number for VAT",
+    "wie auf dem Bescheid, z. B. 198/113/10010": "as on the tax assessment, e.g. 198/113/10010",
+    "Für UStVA und Umsatzsteuer-Erklärung. Wer nur eine Steuernummer hat, trägt sie hier ein.": (
+        "For VAT returns. If you have only one tax number, enter it here."
+    ),
+    "Steuernummer für die Einkommensteuer (falls eine andere)": (
+        "Tax number for income tax (if different)"
+    ),
+    "leer = dieselbe Nummer": "empty = the same number",
+    "Manche Finanzämter vergeben eine eigene Nummer für die Umsatzsteuer.": (
+        "Some tax offices issue a separate number for VAT."
+    ),
+    "Anlage EÜR abgeben unter": "File the Anlage EÜR under",
+    "Einkommensteuer-Nummer": "income tax number",
+    "Umsatzsteuer-Nummer": "VAT number",
+    "Nur nötig bei zwei verschiedenen Nummern. Welche gilt, steht im Schreiben des Finanzamts zur Vergabe der Nummern; im Zweifel dort nachfragen.": (
+        "Only needed with two different numbers. Which one applies is in the tax office's letter "
+        "assigning them; if in doubt, ask there."
+    ),
+    "Bitte auswählen.": "Please choose.",
+    "USt-IdNr. (optional)": "VAT ID (optional)",
+    "Rechtsform": "Legal form",
+    "Freiberuflich": "Freelancer (freie Berufe)",
+    "Voranmeldungszeitraum": "VAT return period",
+    "Dauerfristverlängerung (Frist einen Monat später)": (
+        "Permanent extension (deadline one month later)"
+    ),
+    "Welcher Zeitraum gilt, legt das Finanzamt fest (§ 18 Abs. 2 UStG).": (
+        "The tax office decides which period applies (§ 18 Abs. 2 UStG)."
+    ),
+    "Kleinunternehmer (§ 19 UStG)": "Small business (§ 19 UStG)",
+    "Jahre als Kleinunternehmer": "Years as a small business",
+    "z. B. 2024, 2025": "e.g. 2024, 2025",
+    "In diesen Jahren rechnet die EÜR alle Einnahmen in Kz 111 und alle Beträge brutto, ohne Umsatzsteuer-Zeilen.": (
+        "In these years the EÜR puts all income in Kz 111 and all amounts gross, without VAT lines."
+    ),
+    "Bitte Jahreszahlen mit vier Ziffern, durch Komma getrennt.": (
+        "Please enter four-digit years, separated by commas."
+    ),
+    "Hersteller-ID": "Hersteller-ID",
+    "5 Ziffern": "5 digits",
+    "Zertifikat (.pfx)": "Certificate (.pfx)",
+    "noch keins": "none yet",
+    "Zertifikats-PIN": "Certificate PIN",
+    "Leer lassen, um die gespeicherte PIN zu behalten.": "Leave empty to keep the stored PIN.",
+    "ERiC-Pfad (Ordner mit ericapi)": "ERiC path (folder with ericapi)",
+    "sonst Umgebungsvariable FINAMT_ERIC_HOME": "otherwise environment variable FINAMT_ERIC_HOME",
+    "Gespeichert im Projektordner, wie in der alten Oberfläche. Die PIN wird nie wieder angezeigt.": (
+        "Stored in the project folder, as in the old interface. The PIN is never shown again."
+    ),
+    "Leer: die Umsatzsteuer-Nummer gilt für alles.": "Empty: the VAT number applies to everything.",
+    "Bundesland und Steuernummer eintragen; die ELSTER-Werte werden dann berechnet.": (
+        "Enter the federal state and tax number; the ELSTER values are then computed."
+    ),
+    "13-stellige ELSTER-Steuernummer": "13-digit ELSTER tax number",
+    "Finanzamtsnr.": "Tax office no.",
+    "Die Prüfziffer kontrolliert ERiC beim Prüfen oder Senden.": (
+        "ERiC checks the check digit when checking or sending."
+    ),
+    "Bundesland fehlt.": "Federal state missing.",
+    "Steuernummer fehlt.": "Tax number missing.",
+    "Steuernummer darf nur Ziffern, / und Leerzeichen enthalten.": (
+        "The tax number may only contain digits, / and spaces."
+    ),
+    "Zwei Steuernummern eingetragen: in den Stammdaten festlegen, unter welcher die Anlage EÜR abgegeben wird.": (
+        "Two tax numbers entered: choose in the settings which one the Anlage EÜR is filed under."
+    ),
+    # projects and partners (UI-8)
+    "Projekte": "Projects",
+    "Neues Projekt": "New project",
+    "Projekt anlegen": "Create project",
+    "Projekt löschen": "Delete project",
+    "Projekt „{name}“ mit allen Belegen wirklich löschen?": (
+        "Really delete project “{name}” with all its receipts?"
+    ),
+    "Projekt angelegt.": "Project created.",
+    "Projekt gelöscht.": "Project deleted.",
+    "Das Standardprojekt kann nicht gelöscht werden.": "The default project can't be deleted.",
+    "Partnerliste": "Partner list",
+    "geprüft": "verified",
+    "als geprüft markieren": "mark as verified",
+    "Umbenennen": "Rename",
+    "Zusammenführen mit …": "Merge into …",
+    "Zusammenführen": "Merge",
+    "Keine Partner.": "No partners.",
+    "Partner gespeichert.": "Partner saved.",
+    "Partner zusammengeführt.": "Partners merged.",
+}
+
+
+Translator = Callable[..., str]
+
+
+def translator(lang: str) -> Translator:
+    """``_(text, **args)`` for ``lang``: English lookup with German fallback, then ``format``."""
+
+    def _(text: str, **args) -> str:
+        if not text:
+            return ""
+        s = EN.get(text, text) if lang == "en" else text
+        if args:
+            try:
+                return s.format(**args)
+            except (KeyError, IndexError, ValueError):
+                return s
+        return s
+
+    return _
+
+
+def lang_from(request) -> str:
+    code = request.cookies.get(COOKIE, DEFAULT)
+    return code if code in CODES else DEFAULT
+
+
+def zeitraum_label(z, lang: str) -> str:
+    """Label of a UStVA period (``helpers.Zeitraum``) in ``lang``."""
+    if z is None:
+        return ""
+    if lang != "en":
+        return z.label
+    if getattr(z, "is_jahr", False):
+        return f"Year {z.jahr}"
+    if getattr(z, "month", None):
+        return f"{MONATE_EN[z.month - 1]} {z.jahr}"
+    return z.label  # "Q1 2025" is the same in English
