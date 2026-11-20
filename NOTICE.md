@@ -143,6 +143,19 @@ Branch `baseline/fable-1`:
   behaves as before. The new UI no longer offers such leftovers as projects (deleting one said
   "Project … not found") and removes them from the Projekte page if they are empty.
 
+### 0 %, tax-free and reverse-charge receipts (tasks UST-3, UST-4, 2026-11-20)
+- `src/finamt/models.py` (upstream file): new `ReceiptData.vat_treatment` (`zero_rate`,
+  `tax_free`, `reverse_charge` or None) and a `reverse_charge` property; in `to_dict`.
+- `src/finamt/storage/sqlite.py` (upstream file): column `receipts.vat_treatment` (in-place
+  migration), saved, read and updatable.
+- `src/finamt/tax/ustva.py` (upstream file): such receipts go to Kz 87 / 48 / 21 / 45 / 60 and
+  Kz 46/47 / 84/85 + Kz 67 instead of being skipped; new `warnings` for receipts that cannot be
+  reported. `total_output_vat` / `total_input_vat` include the § 13b tax.
+- `src/finamt/tax/elster.py` (upstream file): `_ustva_kennzahlen` writes those Kennzahlen; the
+  annual USt build refuses reports with them (E50 fields unverified).
+- `src/finamt/tax/eur.py`: such sales go to Kz 103.
+- Web UI: "USt-Behandlung" select on the receipt form; UStVA page lists the warnings.
+
 ### Outgoing invoices (task INV-1, 2026-11-20)
 - New package `src/finamt/invoicing/` and CLI group `finamt invoice` (FreiBuch's own code).
 - `src/finamt/storage/sqlite.py` (upstream file): new tables `invoice_sequence` and `invoices`

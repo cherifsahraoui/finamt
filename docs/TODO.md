@@ -29,10 +29,10 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | done (2026-11-20) | — |
 | 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | done (2026-11-20) | — |
 | 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | done (2026-11-20) | — |
-| 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | **ready** | UST-2 (done) |
-| 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | ready | UST-2 (done) |
+| 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | done (2026-11-20) | UST-2 (done) |
+| 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | done (2026-11-20) | UST-2 (done) |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | done (2026-11-20) | — |
-| 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
+| 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | ready | UST-4 (done) |
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 (done) |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
@@ -112,7 +112,12 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-3: 0 % rate (Kz 87) and tax-free sales (Kz 48)
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S
+- **Result**: one receipt field `vat_treatment` (`zero_rate`, `tax_free`, `reverse_charge`),
+  shared with UST-4 instead of a second flag; set in the receipt form ("USt-Behandlung").
+  Base = `total_amount`. A sale without VAT and without a reason adds a report warning; a receipt
+  with a treatment that still shows VAT is refused with a warning. Tests:
+  `tests/unit/test_ustva_special.py`.
 - **Goal**: sales with VAT 0 are skipped today. Report 0 %-rate sales (§ 12 Abs. 3) in Kz 87 and
   tax-free sales without input-tax deduction in Kz 48.
 - **Verified rules**: tax-rules.md rows 0 %, Kz 87, Kz 48.
@@ -125,7 +130,15 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-4: reverse charge flag and Kennzahlen
 
-- **Status**: ready · **Size**: L
+- **Status**: done (2026-11-20) · **Size**: L
+- **Result**: `ReceiptData.reverse_charge` is a property over `vat_treatment` (see UST-3).
+  The Kennzahl follows the counterparty's VAT ID prefix, else a two-letter country code:
+  sale → Kz 21 (EU), Kz 60 (DE), Kz 45 (non-EU); purchase → Kz 46/47 (EU) or Kz 84/85 (DE,
+  non-EU), Kz 67 = tax × business share. Unknown counterparty country → warning, not reported.
+  EÜR: such sales → Kz 103. The annual USt (E50) raises `NotImplementedError` while any of these
+  amounts is present (E50 fields unverified). Open: the EU prefix list's `GB` / `XI` handling
+  (tax-rules.md row "EU VAT ID prefixes"); the reverse-charge note on invoices (INV-1) is not
+  added yet.
 - **Goal**: a freelancer billing EU business clients reports those sales in **Kz 21**
   (§ 18b S. 1 Nr. 2). Services bought from EU businesses (e.g. software subscriptions) are reported
   in **Kz 46 / 47** with the same tax deducted in **Kz 67**. German § 13b supplier cases go to Kz 60.
@@ -403,7 +416,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### ZM-1: Zusammenfassende Meldung
 
-- **Status**: waiting (UST-4) · **Size**: M
+- **Status**: ready · **Size**: M
 - **Goal**: aggregate EU B2B service sales (reverse charge) per customer USt-IdNr and quarter;
   due on the 25th day after the quarter (§ 18a Abs. 2, verified).
 - **Files**: new `src/finamt/tax/zm.py` (+ later `zm_elster.py` in the `eur_elster.py` pattern), tests.

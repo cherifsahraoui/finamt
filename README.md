@@ -28,7 +28,7 @@ leave it, except for the ELSTER submission itself.
 | EÜR submission via ELSTER | 🧪 ERiC check, XML download and test send; live is switched off (D3); needs one owner test send (EUR-6) | web UI `/app/euer`, `finamt eur --validate / --xml` |
 | Official PDF (ERiC print) of UStVA, annual USt and EÜR | ✅ preview before sending; copy after a send stored in the archive (PRINT-1) | web UI "Druckansicht (PDF)", `finamt eur --pdf` |
 | Credit notes in the UStVA (negative base and tax lines) | ✅ works (UST-2) | — |
-| 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-3, UST-4) | — |
+| 0 %, tax-free and reverse-charge receipts in the UStVA (Kz 87, 48, 21, 45, 60, 46/47, 84/85, 67) | ✅ UStVA and EÜR (UST-3, UST-4); the annual USt refuses them for now | receipt form "USt-Behandlung" |
 | Writing invoices (§ 14 UStG), gapless numbers, PDF, cancellation | ✅ works (INV-1) | web UI `/app/rechnungen`, `finamt invoice new --file F.json` |
 | Zusammenfassende Meldung for EU clients | ⛔ not yet (ZM-1) | — |
 | Kleinunternehmer (§ 19 UStG) mode | ✅ EÜR and invoices; years set in Stammdaten (EUR-8) | web UI, `finamt eur --kleinunternehmer` |
@@ -41,9 +41,8 @@ these lives in [`legacy/`](legacy/README.md) and is not installed.
 The work is split into small tasks that an AI agent (or a person) can pick up one at a time.
 The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The next steps:
 
-1. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
-2. **ZM-1**: Zusammenfassende Meldung
-3. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
+1. **ZM-1**: Zusammenfassende Meldung
+2. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
 
 Decisions that shape the project (CLI first, no live filing by default, …) are in
 [docs/DECISIONS.md](docs/DECISIONS.md).
