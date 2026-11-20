@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Partner") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Partner") }}</h1>
+{% if meldung %}<div class="notice ok">{{ _(meldung) }}</div>{% endif %}
+
+{% if rows %}
+<table class="list">
+  <thead><tr><th>{{ _("Name") }}</th><th>{{ _("USt-IdNr.") }}</th><th class="num">{{ _("Belege") }}</th><th>{{ _("geprüft") }}</th><th></th><th>{{ _("Zusammenführen mit …") }}</th></tr></thead>
+  <tbody>
+  {% for cp in rows %}
+    <tr>
+      <td colspan="5">
+        <form method="post" action="{{ href('/partner/' ~ cp.id) }}" class="row">
+          <input name="name" value="{{ cp.name or '' }}" aria-label="{{ _('Name') }}">
+          <input name="vat_id" value="{{ cp.vat_id or '' }}" class="mono short" aria-label="{{ _('USt-IdNr.') }}" placeholder="DE…">
+          <span class="num">{{ anzahl.get(cp.id, 0) }}</span>
+          <label class="check"><input type="checkbox" name="verified" value="1" {% if cp.verified %}checked{% endif %}> {{ _("geprüft") }}</label>
+          <button type="submit">{{ _("Speichern") }}</button>
+        </form>
+      </td>
+      <td>
+        {% if rows|length > 1 %}
+        <form method="post" action="{{ href('/partner/' ~ cp.id ~ '/zusammenfuehren') }}" class="row">
+          <select name="ziel" aria-label="{{ _('Zusammenführen mit …') }}">
+            {% for z in rows if z.id != cp.id %}<option value="{{ z.id }}">{{ z.name or "—" }}</option>{% endfor %}
+          </select>
+          <button type="submit">{{ _("Zusammenführen") }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">{{ _("Zusammenführen hängt alle Belege an den gewählten Partner und löscht diesen Eintrag.") }}</p>
+{% else %}
+<p class="empty">{{ _("Keine Partner.") }}</p>
+{% endif %}
+{% endblock %}

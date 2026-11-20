@@ -11,6 +11,7 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -503,7 +504,7 @@ class TestEdit:
         html = _get(client, f"/app/belege/{r.id}").text
         assert "Kz 228" in html
         assert 'value="119,00"' in html
-        assert "/receipts/" in html and "/pdf" in html
+        assert "Kein Original (manuell erfasst)." in html  # no stored file for this receipt
 
     def test_save_german_amounts_and_recompute_warnings(self, client):
         r = _receipt(name="Alt")
@@ -863,3 +864,280 @@ class TestZweiSteuernummern:
             params={"state": "Bayern", "tax_number_est": EST_NR, "art": "est"},
         )
         assert EST_13 in ok.text
+
+
+# ---------------------------------------------------------------------------
+# UI-8: manual entry, projects, partners, XML download, archive
+# ---------------------------------------------------------------------------
+
+
+def _manuell(client, **data):
+    felder = {
+        "receipt_type": "purchase",
+        "receipt_date": "2025-03-04",
+        "counterparty_name": "Bäckerei Korn",
+        "category": "travel",
+        "total_amount": "11,90",
+        "vat_percentage": "19",
+    }
+    felder.update(data)
+    return client.post("/app/belege/neu", params={"projekt": PROJEKT}, data=felder)
+
+
+def _alle(layout=None):
+    with SQLiteRepository(db_path=(layout or _layout()).db_path) as repo:
+        return list(repo.list_all())
+
+
+class TestManuelleErfassung:
+    def test_form_on_belege_page(self, client):
+        html = _get(client, "/app/belege").text
+        assert "Beleg manuell erfassen" in html
+        assert 'action="/app/belege/neu?projekt=testprojekt"' in html
+
+    def test_creates_receipt_with_vat_from_rate(self, client):
+        resp = _manuell(client)
+        assert resp.status_code == 200
+        assert "Gespeichert." in resp.text
+        assert "Kein Original (manuell erfasst)." in resp.text
+        [r] = _alle()
+        assert r.vendor == "Bäckerei Korn"
+        assert r.total_amount == Decimal("11.90")
+        assert r.vat_amount == Decimal("1.90")
+        assert str(r.category) == "travel"
+        assert r.receipt_date.date() == date(2025, 3, 4)
+
+    def test_explicit_vat_kept(self, client):
+        _manuell(client, vat_amount="1,50")
+        assert _alle()[0].vat_amount == Decimal("1.50")
+
+    def test_two_identical_entries_are_two_receipts(self, client):
+        _manuell(client)
+        _manuell(client)
+        assert len(_alle()) == 2
+
+    @pytest.mark.parametrize(
+        "feld,wert,text",
+        [
+            ("total_amount", "", "Bruttobetrag fehlt."),
+            ("total_amount", "abc", "Kein gültiger Betrag"),
+            ("counterparty_name", " ", "Partner fehlt."),
+            ("receipt_date", "", "Datum fehlt."),
+        ],
+    )
+    def test_invalid_input_shows_error(self, client, feld, wert, text):
+        resp = _manuell(client, **{feld: wert})
+        assert "Nicht angelegt:" in resp.text
+        assert text in resp.text
+        assert '<details class="card" id="manuell" open>' in resp.text
+        assert _alle() == []
+
+    def test_original_shown_when_file_stored(self, client, monkeypatch):
+        import finamt.ui.api as api
+
+        r = _receipt()
+        _save(r)
+        monkeypatch.setattr(api, "_find_stored_file", lambda rid, db: Path("x.pdf"))
+        html = _get(client, f"/app/belege/{r.id}").text
+        assert f"/receipts/{r.id}/pdf" in html
+
+
+class TestProjekte:
+    def test_create_switches_to_new_project(self, client):
+        resp = client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "neu-2026"})
+        assert "Projekt angelegt." in resp.text
+        assert "projekt=neu-2026" in str(resp.url)
+        assert "neu-2026" in _get(client, "/app/projekte").text
+
+    def test_invalid_name_shows_error(self, client):
+        resp = client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "../x"})
+        assert 'class="notice err"' in resp.text
+
+    def test_duplicate_name_shows_error(self, client):
+        client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "doppelt"})
+        resp = client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "doppelt"})
+        assert "already exists" in resp.text
+
+    def test_delete_project(self, client):
+        client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "weg"})
+        resp = client.post("/app/projekte/weg/loeschen", params={"projekt": "weg"})
+        assert "Projekt gelöscht." in resp.text
+        assert "projekt=default" in str(resp.url)
+        assert not project_mod.resolve_project("weg", env_var=False).db_path.exists()
+
+    def test_default_project_protected(self, client):
+        resp = client.post("/app/projekte/default/loeschen", params={"projekt": PROJEKT})
+        assert "Das Standardprojekt kann nicht gelöscht werden." in resp.text
+
+    def test_counts_receipts(self, client):
+        _save(_receipt(), _receipt())
+        html = _get(client, "/app/projekte").text
+        assert re.search(r"testprojekt</a>.*?<td class=\"num\">2</td>", html, re.S)
+
+
+class TestPartner:
+    def _ids(self):
+        with SQLiteRepository(db_path=_layout().db_path) as repo:
+            return {r["name"]: r for r in repo.list_all_counterparties()}
+
+    def test_list_with_counts(self, client):
+        _save(_receipt(name="Alpha GmbH"), _receipt(name="Alpha GmbH"), _receipt(name="Beta AG"))
+        html = _get(client, "/app/partner").text
+        assert 'value="Alpha GmbH"' in html and 'value="Beta AG"' in html
+        assert '<span class="num">2</span>' in html
+
+    def test_rename_and_verify(self, client):
+        _save(_receipt(name="Alpha GmbH"))
+        cp = self._ids()["Alpha GmbH"]
+        resp = client.post(
+            f"/app/partner/{cp['id']}",
+            params={"projekt": PROJEKT},
+            data={"name": "Alpha Software GmbH", "vat_id": "de 123456789", "verified": "1"},
+        )
+        assert "Partner gespeichert." in resp.text
+        row = self._ids()["Alpha Software GmbH"]
+        assert row["verified"]
+        assert row["vat_id"] == "DE123456789"
+
+    def test_merge_moves_receipts(self, client):
+        _save(_receipt(name="Alpha GmbH"), _receipt(name="Alpha GmbH."), _receipt(name="Beta AG"))
+        ids = self._ids()
+        quelle, ziel = ids["Alpha GmbH."]["id"], ids["Alpha GmbH"]["id"]
+        resp = client.post(
+            f"/app/partner/{quelle}/zusammenfuehren",
+            params={"projekt": PROJEKT},
+            data={"ziel": ziel},
+        )
+        assert "Partner zusammengeführt." in resp.text
+        assert "Alpha GmbH." not in self._ids()
+        assert sorted(r.vendor for r in _alle()) == ["Alpha GmbH", "Alpha GmbH", "Beta AG"]
+
+    def test_unknown_partner_404(self, client):
+        _save(_receipt())
+        resp = client.post("/app/partner/nope", params={"projekt": PROJEKT}, data={"name": "x"})
+        assert resp.status_code == 404
+
+
+class TestXmlDownload:
+    def test_ustva_xml_download(self, client, monkeypatch):
+        from fastapi.responses import Response as R
+
+        import finamt.ui.api as api
+
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        seen = {}
+
+        def fake_xml(body, db=None):
+            seen["body"] = body
+            return R(content=b"<Elster/>", media_type="text/xml")
+
+        monkeypatch.setattr(api, "post_ustva_xml", fake_xml)
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "q1", "aktion": "xml"},
+        )
+        assert resp.status_code == 200
+        assert resp.content == b"<Elster/>"
+        assert 'filename="UStVA_2025_q1.xml"' in resp.headers["content-disposition"]
+        assert seen["body"].use_test is True
+        assert seen["body"].quarter == 1
+
+    def test_annual_xml_download(self, client, monkeypatch):
+        from fastapi.responses import Response as R
+
+        import finamt.ui.api as api
+
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        monkeypatch.setattr(api, "post_uste_xml", lambda body, db=None: R(content=b"<E50/>"))
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "jahr", "aktion": "xml"},
+        )
+        assert resp.content == b"<E50/>"
+        assert 'filename="USt_2025_jahr.xml"' in resp.headers["content-disposition"]
+
+    def test_xml_needs_stammdaten(self, client):
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "q1", "aktion": "xml"},
+        )
+        assert "Stammdaten unvollständig" in resp.text
+
+    def test_button_present(self, client):
+        assert 'value="xml"' in _get(client, "/app/ustva", jahr=2025, zeitraum="q1").text
+
+
+class TestArchiv:
+    def _submission(self):
+        layout = _layout()
+        layout.create_dirs()
+        layout.submitted_returns_dir.mkdir(parents=True, exist_ok=True)
+        (layout.submitted_returns_dir / "UStVA_2025_Q1_live.xml").write_bytes(b"<Elster/>")
+        _set_meta(
+            "submissions",
+            [
+                {
+                    "type": "ustva_q1",
+                    "year": 2025,
+                    "submitted_at": "2025-04-08T10:00:00",
+                    "telenummer": "T-1",
+                    "xml_filename": "UStVA_2025_Q1_live.xml",
+                }
+            ],
+        )
+
+    def test_lists_submissions_and_files(self, client):
+        self._submission()
+        html = _get(client, "/app/archiv").text
+        assert "T-1" in html
+        assert "UStVA_2025_Q1_live.xml" in html
+
+    def test_serves_file(self, client):
+        self._submission()
+        resp = _get(client, "/app/archiv/datei", name="UStVA_2025_Q1_live.xml")
+        assert resp.content == b"<Elster/>"
+
+    def test_path_traversal_refused(self, client):
+        self._submission()
+        resp = _get(client, "/app/archiv/datei", name="../finamt.db")
+        assert resp.status_code == 400
+
+    def test_attach_and_remove_bescheid(self, client):
+        self._submission()
+        resp = client.post(
+            "/app/archiv/dokument",
+            params={"projekt": PROJEKT},
+            data={"typ": "ustva_q1", "jahr": "2025", "art": "final"},
+            files={"datei": ("bescheid.pdf", b"%PDF-1.4", "application/pdf")},
+        )
+        assert "Bescheid</a>" in resp.text
+        resp = client.post(
+            "/app/archiv/dokument/loeschen",
+            params={"projekt": PROJEKT},
+            data={"typ": "ustva_q1", "jahr": "2025", "art": "final"},
+        )
+        assert "Bescheid</a>" not in resp.text
+
+    def test_wrong_file_type_shows_error(self, client):
+        self._submission()
+        resp = client.post(
+            "/app/archiv/dokument",
+            params={"projekt": PROJEKT},
+            data={"typ": "ustva_q1", "jahr": "2025", "art": "copy"},
+            files={"datei": ("x.exe", b"MZ", "application/octet-stream")},
+        )
+        assert "Unsupported file type" in resp.text
+
+    def test_empty_archive(self, client):
+        assert "Keine archivierten Erklärungen." in _get(client, "/app/archiv").text
+
+
+class TestNavigationUi8:
+    def test_new_pages_in_navigation_and_render(self, client):
+        html = _get(client, "/app").text
+        for path in ("/app/partner", "/app/archiv", "/app/projekte"):
+            assert f'href="{path}?projekt=testprojekt"' in html
+            assert _get(client, path).status_code == 200

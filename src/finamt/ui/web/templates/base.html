@@ -17,6 +17,7 @@
           {% for p in projekte %}<option value="{{ p }}" {% if p == projekt %}selected{% endif %}>{{ p }}</option>{% endfor %}
         </select>
         <noscript><button type="submit">{{ _("Wechseln") }}</button></noscript>
+        <a class="hint" href="{{ href('/projekte') }}" {% if nav == "projekte" %}aria-current="page"{% endif %}>{{ _("Projekte verwalten") }}</a>
       </form>
       <ul>
         {% for key, label, path in [
@@ -25,6 +26,8 @@
           ("ustva", "UStVA", "/ustva"),
           ("euer", "EÜR", "/euer"),
           ("rechnungen", "Rechnungen", "/rechnungen"),
+          ("partner", "Partner", "/partner"),
+          ("archiv", "Archiv", "/archiv"),
           ("stammdaten", "Stammdaten", "/stammdaten"),
         ] %}
         <li><a href="{{ href(path) }}" {% if nav == key %}aria-current="page"{% endif %}>{{ _(label) }}</a></li>

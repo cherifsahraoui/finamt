@@ -203,6 +203,7 @@ def belege(
     kategorie: str | None = None,
     pruefen: str | None = None,
     meldung: str | None = None,
+    fehler: str | None = None,
 ):
     layout = h.resolve(projekt)
     jahr = jahr or date.today().year
@@ -231,6 +232,7 @@ def belege(
         kategorien=RECEIPT_CATEGORIES,
         typen=TYP_LABELS,
         meldung=meldung,
+        fehler=fehler,
         summe_netto=sum((r.net_amount or Decimal("0") for r, _ in rows), Decimal("0")),
         summe_ust=sum((r.vat_amount or Decimal("0") for r, _ in rows), Decimal("0")),
     )
@@ -335,6 +337,82 @@ def _beleg_or_404(layout, receipt_id: str):
     return r
 
 
+@router.post("/belege/neu")
+def beleg_neu(
+    projekt: str | None = Query(default=None),
+    receipt_type: str = Form("purchase"),
+    receipt_date: str = Form(""),
+    receipt_number: str = Form(""),
+    counterparty_name: str = Form(""),
+    category: str = Form("other"),
+    subcategory: str = Form(""),
+    total_amount: str = Form(""),
+    vat_percentage: str = Form(""),
+    vat_amount: str = Form(""),
+    einfuhr_vat: str = Form(""),
+    private_use_percent: str = Form(""),
+    description: str = Form(""),
+):
+    """UI-8 (1): a receipt entered by hand, without a file (old UI: POST /receipts)."""
+    import uuid
+
+    from finamt.models import Counterparty, ReceiptCategory, ReceiptData, ReceiptType
+
+    layout = h.resolve(projekt)
+    try:
+        brutto = h.parse_betrag(total_amount)
+        satz = h.parse_betrag(vat_percentage)
+        ust = h.parse_betrag(vat_amount)
+        privat = h.parse_betrag(private_use_percent)
+        if brutto is None:
+            raise ValueError("Bruttobetrag fehlt.")
+        if not counterparty_name.strip():
+            raise ValueError("Partner fehlt.")
+        datum = date.fromisoformat(receipt_date) if receipt_date else None
+        if datum is None:
+            raise ValueError("Datum fehlt.")
+        if ust is None and satz is not None:
+            # VAT contained in the gross amount: brutto − brutto / (1 + satz/100)
+            ust = (brutto - brutto / (Decimal("1") + satz / Decimal("100"))).quantize(
+                Decimal("0.01")
+            )
+    except ValueError as exc:
+        return _redirect("/belege", layout.name, fehler=str(exc))
+
+    rtype = receipt_type if receipt_type in TYP_LABELS else "purchase"
+    r = ReceiptData(
+        # unique text, so the content hash (receipt id) never collides
+        raw_text=f"MANUAL:{rtype}:{datum}:{brutto}:{counterparty_name.strip()}:{uuid.uuid4().hex}",
+        receipt_type=ReceiptType(rtype),
+        counterparty=Counterparty(name=counterparty_name.strip()),
+        receipt_date=datetime(datum.year, datum.month, datum.day),
+        total_amount=brutto,
+        vat_percentage=satz,
+        vat_amount=ust,
+        category=ReceiptCategory(category if category in RECEIPT_CATEGORIES else "other"),
+        subcategory=subcategory.strip() or None,
+        receipt_number=receipt_number.strip() or None,
+        description=description.strip(),
+        private_use_share=(privat or Decimal("0")) / Decimal("100"),
+    )
+    if einfuhr_vat.strip():
+        r.einfuhr_vat = h.parse_betrag(einfuhr_vat)
+    r.validate()
+    layout.create_dirs()
+    with h.open_repo(layout, create=True) as repo:
+        repo.save(r)
+    return _redirect(f"/belege/{r.id}", layout.name, gespeichert="1")
+
+
+def _original_url(layout, receipt_id: str) -> str | None:
+    """URL of the stored original file, or None (e.g. for a manually entered receipt)."""
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    if not _api._find_stored_file(receipt_id, layout.db_path):
+        return None
+    return f"/receipts/{receipt_id}/pdf?{urlencode({'db': str(layout.db_path)})}"
+
+
 @router.get("/belege/{receipt_id}", response_class=HTMLResponse)
 def beleg(request: Request, receipt_id: str, projekt: str | None = None, gespeichert: str = ""):
     layout = h.resolve(projekt)
@@ -350,7 +428,7 @@ def beleg(request: Request, receipt_id: str, projekt: str | None = None, gespeic
         typen=TYP_LABELS,
         gespeichert=bool(gespeichert),
         fehler=None,
-        pdf_url=f"/receipts/{receipt_id}/pdf?{urlencode({'db': str(layout.db_path)})}",
+        pdf_url=_original_url(layout, receipt_id),
     )
 
 
@@ -404,7 +482,7 @@ def beleg_speichern(
             typen=TYP_LABELS,
             gespeichert=False,
             fehler=str(exc),
-            pdf_url=f"/receipts/{receipt_id}/pdf?{urlencode({'db': str(layout.db_path)})}",
+            pdf_url=_original_url(layout, receipt_id),
         )
     with h.open_repo(layout) as repo:
         repo.update(receipt_id, fields)
@@ -497,12 +575,15 @@ def ustva_senden(
     besteuerungsart: str = Form("1"),
     vorauszahlungssoll: str = Form(""),
 ):
-    """aktion: ``pruefen`` (ERiC validation only), ``test`` (Testmerker), ``live``."""
+    """
+    aktion: ``pruefen`` (ERiC validation only), ``test`` (Testmerker), ``live``, or ``xml``
+    (download the XML without sending; built with the Testmerker, like the old UI).
+    """
     from finamt.ui import api as _api  # lazy: api.py imports this module
 
     layout = h.resolve(projekt)
     z = h.zeitraum(jahr, zeitraum)
-    if z is None or aktion not in ("pruefen", "test", "live"):
+    if z is None or aktion not in ("pruefen", "test", "live", "xml"):
         raise HTTPException(status_code=400, detail="Ungültiger Zeitraum oder Aktion.")
 
     fields, fehler = _elster_request_fields(layout)
@@ -516,6 +597,7 @@ def ustva_senden(
             "use_test": aktion != "live",
             "validate_only": aktion == "pruefen",
         }
+        xml_name = f"{'USt' if z.is_jahr else 'UStVA'}_{jahr}_{z.key}.xml"
         try:
             if z.is_jahr:
                 vz = h.parse_betrag(vorauszahlungssoll) or Decimal("0")
@@ -525,6 +607,8 @@ def ustva_senden(
                     # the existing API model takes a float; it converts back to Decimal
                     vorauszahlungssoll=float(vz),
                 )
+                if aktion == "xml":
+                    return _xml_download(_api.post_uste_xml(body, db=str(layout.db_path)), xml_name)
                 res = _api.post_uste_submit(body, db=str(layout.db_path))
             else:
                 body = _api.UStVASubmitRequest(
@@ -533,6 +617,10 @@ def ustva_senden(
                     month=z.month,
                     is_berichtigung=bool(berichtigung),
                 )
+                if aktion == "xml":
+                    return _xml_download(
+                        _api.post_ustva_xml(body, db=str(layout.db_path)), xml_name
+                    )
                 res = _api.post_ustva_submit(body, db=str(layout.db_path))
             ergebnis = {
                 "success": bool(res.get("success")),
@@ -545,8 +633,19 @@ def ustva_senden(
             ergebnis = {"success": False, "message": str(exc.detail), "status": exc.status_code}
         except ValueError as exc:
             ergebnis = {"success": False, "message": str(exc)}
+        except Exception as exc:  # noqa: BLE001 — e.g. signing without a certificate
+            ergebnis = {"success": False, "message": str(exc)}
     return _render(
         request, "ustva.html", layout, "ustva", ergebnis=ergebnis, **_ustva_context(layout, z)
+    )
+
+
+def _xml_download(resp: Response, filename: str) -> Response:
+    """The old API's XML response, as a file download."""
+    return Response(
+        content=resp.body,
+        media_type="text/xml; charset=UTF-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -588,6 +687,196 @@ def euer_json(jahr: int, projekt: str | None = None):
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="euer_{jahr}.json"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Projekte (UI-8 item 2): reuse the old API's create / delete logic in-process
+# ---------------------------------------------------------------------------
+
+
+@router.get("/projekte", response_class=HTMLResponse)
+def projekte(
+    request: Request,
+    projekt: str | None = None,
+    meldung: str | None = None,
+    fehler: str | None = None,
+):
+    layout = h.resolve(projekt)
+    belege: dict[str, int] = {}
+    for name in h.project_names(layout.name):
+        with h.open_repo(h.resolve(name)) as repo:
+            belege[name] = sum(1 for _ in repo.list_all()) if repo is not None else 0
+    return _render(
+        request,
+        "projekte.html",
+        layout,
+        "projekte",
+        meldung=meldung,
+        fehler=fehler,
+        projekt_belege=belege,
+    )
+
+
+@router.post("/projekte")
+def projekt_anlegen(projekt: str | None = Query(default=None), name: str = Form("")):
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    layout = h.resolve(projekt)
+    try:
+        neu = _api.create_project({"name": name})
+    except HTTPException as exc:
+        return _redirect("/projekte", layout.name, fehler=str(exc.detail))
+    return _redirect("/projekte", neu["name"], meldung="Projekt angelegt.")
+
+
+@router.post("/projekte/{name}/loeschen")
+def projekt_loeschen(name: str, projekt: str | None = Query(default=None)):
+    """Deletes the project's database; PDFs are kept, as in the old UI (keep_pdfs=True)."""
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    layout = h.resolve(projekt)
+    if name == "default":
+        return _redirect(
+            "/projekte", layout.name, fehler="Das Standardprojekt kann nicht gelöscht werden."
+        )
+    try:
+        _api.delete_project(name, keep_pdfs=True)
+    except HTTPException as exc:
+        return _redirect("/projekte", layout.name, fehler=str(exc.detail))
+    ziel = "default" if layout.name == name else layout.name
+    return _redirect("/projekte", ziel, meldung="Projekt gelöscht.")
+
+
+# ---------------------------------------------------------------------------
+# Partner (UI-8 item 3)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/partner", response_class=HTMLResponse)
+def partner(request: Request, projekt: str | None = None, meldung: str | None = None):
+    layout = h.resolve(projekt)
+    rows: list[dict] = []
+    anzahl: dict[str, int] = {}
+    with h.open_repo(layout) as repo:
+        if repo is not None:
+            rows = repo.list_all_counterparties()
+            for r in repo.list_all():
+                cp = r.counterparty.id if r.counterparty else None
+                if cp:
+                    anzahl[cp] = anzahl.get(cp, 0) + 1
+    return _render(
+        request, "partner.html", layout, "partner", rows=rows, anzahl=anzahl, meldung=meldung
+    )
+
+
+@router.post("/partner/{cp_id}")
+def partner_speichern(
+    cp_id: str,
+    projekt: str | None = Query(default=None),
+    name: str = Form(""),
+    vat_id: str = Form(""),
+    verified: str = Form(""),
+):
+    """Rename / set the VAT ID / mark verified (old UI: PATCH /counterparties/{id})."""
+    layout = h.resolve(projekt)
+    with h.open_repo(layout) as repo:
+        if repo is None or not repo.update_counterparty(
+            cp_id,
+            {
+                "name": name.strip() or None,
+                "vat_id": vat_id.strip().upper().replace(" ", "") or None,
+                "verified": verified == "1",
+            },
+        ):
+            raise HTTPException(status_code=404, detail="Partner nicht gefunden.")
+    return _redirect("/partner", layout.name, meldung="Partner gespeichert.")
+
+
+@router.post("/partner/{cp_id}/zusammenfuehren")
+def partner_zusammenfuehren(
+    cp_id: str, projekt: str | None = Query(default=None), ziel: str = Form("")
+):
+    """Move every receipt of ``cp_id`` to partner ``ziel``, then delete ``cp_id``."""
+    layout = h.resolve(projekt)
+    if not ziel or ziel == cp_id:
+        return _redirect("/partner", layout.name)
+    with h.open_repo(layout) as repo:
+        if repo is None:
+            raise HTTPException(status_code=404, detail="Partner nicht gefunden.")
+        rows = {r["id"]: r for r in repo.list_all_counterparties()}
+        if cp_id not in rows or ziel not in rows:
+            raise HTTPException(status_code=404, detail="Partner nicht gefunden.")
+        z = rows[ziel]
+        felder = {k: z.get(k) for k in ("name", "vat_id", "tax_number")}
+        for r in list(repo.list_all()):
+            if r.counterparty and r.counterparty.id == cp_id:
+                repo.relink_counterparty(r.id, felder)
+        repo.delete_counterparty(cp_id)
+    return _redirect("/partner", layout.name, meldung="Partner zusammengeführt.")
+
+
+# ---------------------------------------------------------------------------
+# Archiv (UI-8 item 5): submitted returns and their documents
+# ---------------------------------------------------------------------------
+
+
+@router.get("/archiv", response_class=HTMLResponse)
+def archiv(request: Request, projekt: str | None = None, fehler: str | None = None):
+    layout = h.resolve(projekt)
+    subs = [s for s in h.get_meta(layout, "submissions") or [] if isinstance(s, dict)]
+    subs.sort(key=lambda s: s.get("submitted_at") or "", reverse=True)
+    ordner = layout.submitted_returns_dir
+    dateien = sorted(f.name for f in ordner.iterdir() if f.is_file()) if ordner.exists() else []
+    return _render(
+        request, "archiv.html", layout, "archiv", submissions=subs, dateien=dateien, fehler=fehler
+    )
+
+
+@router.get("/archiv/datei")
+def archiv_datei(projekt: str | None = None, name: str = ""):
+    """A file from submitted_returns/ (old API: GET /submissions/file, same path check)."""
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    layout = h.resolve(projekt)
+    return _api.get_submission_file(filename=name, db=str(layout.db_path))
+
+
+@router.post("/archiv/dokument")
+async def archiv_dokument(
+    projekt: str | None = Query(default=None),
+    typ: str = Form(...),
+    jahr: int = Form(...),
+    art: str = Form(...),
+    datei: UploadFile = File(...),
+):
+    """Attach the own copy (``art=copy``) or the Bescheid (``art=final``) to a submission."""
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    layout = h.resolve(projekt)
+    try:
+        await _api.upload_submission_document(
+            file=datei, type=typ, year=jahr, kind=art, db=str(layout.db_path)
+        )
+    except HTTPException as exc:
+        return _redirect("/archiv", layout.name, fehler=str(exc.detail))
+    return _redirect("/archiv", layout.name)
+
+
+@router.post("/archiv/dokument/loeschen")
+def archiv_dokument_loeschen(
+    projekt: str | None = Query(default=None),
+    typ: str = Form(...),
+    jahr: int = Form(...),
+    art: str = Form(...),
+):
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    layout = h.resolve(projekt)
+    try:
+        _api.delete_submission_document(type=typ, year=jahr, kind=art, db=str(layout.db_path))
+    except HTTPException as exc:
+        return _redirect("/archiv", layout.name, fehler=str(exc.detail))
+    return _redirect("/archiv", layout.name)
 
 
 # ---------------------------------------------------------------------------

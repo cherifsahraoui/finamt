@@ -3,6 +3,7 @@
 {% block content %}
 <h1>{{ _("Belege") }}</h1>
 {% if meldung %}<div class="notice ok">{{ _(meldung) }}</div>{% endif %}
+{% if fehler %}<div class="notice err" role="alert">{{ _("Nicht angelegt:") }} {{ _(fehler) }}</div>{% endif %}
 
 {% set gesperrt = upload_job and upload_job.running %}
 <section class="card">
@@ -21,6 +22,15 @@
   </form>
   {% if gesperrt %}<p class="hint" data-upload-sperrhinweis>{{ _("Gesperrt, bis der laufende Upload fertig ist.") }}</p>{% endif %}
 </section>
+
+<details class="card" id="manuell" {% if fehler %}open{% endif %}>
+  <summary><h2>{{ _("Beleg manuell erfassen") }}</h2></summary>
+  <p class="hint">{{ _("Ohne Datei, z. B. für Kleinbeträge oder Belege, die nur auf Papier vorliegen.") }}</p>
+  <form method="post" action="{{ href('/belege/neu') }}" class="grid">
+    {% with r = None %}{% include "_beleg_felder.html" %}{% endwith %}
+    <div class="wide actions"><button type="submit">{{ _("Anlegen") }}</button></div>
+  </form>
+</details>
 
 <form method="get" action="{{ href('/belege') }}" class="filters">
   <input type="hidden" name="projekt" value="{{ projekt }}">

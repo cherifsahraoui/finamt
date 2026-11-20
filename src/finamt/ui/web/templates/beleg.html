@@ -34,8 +34,10 @@
 
   <section class="card preview">
     <h2>{{ _("Original") }}</h2>
+    {% if pdf_url %}
     <iframe src="{{ pdf_url }}" title="{{ _('Beleg-Original') }}"></iframe>
     <p class="hint"><a href="{{ pdf_url }}" target="_blank" rel="noopener">{{ _("In neuem Tab öffnen") }}</a></p>
+    {% else %}<p class="empty">{{ _("Kein Original (manuell erfasst).") }}</p>{% endif %}
   </section>
 </div>
 {% endblock %}

@@ -73,6 +73,7 @@
       <div class="actions">
         <button type="submit" name="aktion" value="pruefen">{{ _("Mit ERiC prüfen") }}</button>
         <button type="submit" name="aktion" value="test">{{ _("Testfall senden") }}</button>
+        <button type="submit" name="aktion" value="xml" class="secondary">{{ _("XML herunterladen") }}</button>
         {% if live_allowed %}
         <button type="submit" name="aktion" value="live" class="danger"
           onclick="return confirm('{{ _('Rechtsverbindlich an das Finanzamt senden?') }}')">{{ _("Verbindlich senden") }}</button>
@@ -82,7 +83,7 @@
       <p class="hint">{{ _("Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den Stammdaten:") }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten") }}</a></p>
     </form>
 
-    <h2>{{ _("Übermittlungen") }}</h2>
+    <h2>{{ _("Übermittlungen") }} <a class="hint" href="{{ href('/archiv') }}">{{ _("Archiv") }}</a></h2>
     {% if submissions %}
     <table class="list">
       <thead><tr><th>{{ _("Art") }}</th><th>{{ _("Jahr") }}</th><th>{{ _("Zeitpunkt (UTC)") }}</th><th>{{ _("Telenummer") }}</th></tr></thead>

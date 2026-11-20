@@ -41,7 +41,6 @@ EN: dict[str, str] = {
     # shared words
     "Art": "Type",
     "Datum": "Date",
-    "Partner": "Partner",
     "Kategorie": "Category",
     "Unterkategorie": "Subcategory",
     "Rechnungsnummer": "Invoice number",
@@ -96,6 +95,10 @@ EN: dict[str, str] = {
         "Without a file, e.g. for small amounts or paper-only receipts."
     ),
     "Anlegen": "Add",
+    "Nicht angelegt:": "Not added:",
+    "Bruttobetrag fehlt.": "Gross amount missing.",
+    "Partner fehlt.": "Partner missing.",
+    "Datum fehlt.": "Date missing.",
     # upload job
     "Upload": "Upload",
     "Belege werden ausgelesen: {n} von {gesamt} fertig": "Reading receipts: {n} of {gesamt} done",
@@ -347,7 +350,30 @@ EN: dict[str, str] = {
     "Projekt angelegt.": "Project created.",
     "Projekt gelöscht.": "Project deleted.",
     "Das Standardprojekt kann nicht gelöscht werden.": "The default project can't be deleted.",
+    "Partner": "Partners",
     "Partnerliste": "Partner list",
+    "Projekte verwalten": "Manage projects",
+    "z. B. freiberuf-2026": "e.g. freelance-2026",
+    "Kleinbuchstaben, Ziffern, - und _. Jedes Projekt hat eine eigene Datenbank.": (
+        "Lower-case letters, digits, - and _. Each project has its own database."
+    ),
+    "aktiv": "active",
+    "Beim Löschen bleiben die Original-Dateien (PDFs) im Projektordner erhalten.": (
+        "Deleting keeps the original files (PDFs) in the project folder."
+    ),
+    "USt-IdNr.": "VAT ID",
+    "Zusammenführen hängt alle Belege an den gewählten Partner und löscht diesen Eintrag.": (
+        "Merging moves all receipts to the chosen partner and deletes this entry."
+    ),
+    "Dateien": "Files",
+    "Eigene Kopie": "Own copy",
+    "Bescheid": "Tax assessment",
+    "entfernen": "remove",
+    "Hochladen": "Upload",
+    "Alle Dateien im Archivordner": "All files in the archive folder",
+    "Nur verbindliche Übermittlungen werden archiviert; Testfälle nicht.": (
+        "Only binding submissions are archived; test cases are not."
+    ),
     "geprüft": "verified",
     "als geprüft markieren": "mark as verified",
     "Umbenennen": "Rename",

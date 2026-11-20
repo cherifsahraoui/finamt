@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Projekte") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Projekte") }}</h1>
+{% if meldung %}<div class="notice ok">{{ _(meldung) }}</div>{% endif %}
+{% if fehler %}<div class="notice err" role="alert">{{ _(fehler) }}</div>{% endif %}
+
+<section class="card">
+  <h2>{{ _("Neues Projekt") }}</h2>
+  <form method="post" action="{{ href('/projekte') }}" class="row">
+    <input name="name" required pattern="[a-z0-9][a-z0-9_-]*" class="mono" placeholder="{{ _('z. B. freiberuf-2026') }}" aria-label="{{ _('Name') }}">
+    <button type="submit">{{ _("Projekt anlegen") }}</button>
+  </form>
+  <p class="hint">{{ _("Kleinbuchstaben, Ziffern, - und _. Jedes Projekt hat eine eigene Datenbank.") }}</p>
+</section>
+
+<table class="list">
+  <thead><tr><th>{{ _("Projekt") }}</th><th class="num">{{ _("Belege") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for p in projekte %}
+    <tr>
+      <td><a href="/app?projekt={{ p|urlencode }}">{{ p }}</a>{% if p == projekt %} <span class="tag ok">{{ _("aktiv") }}</span>{% endif %}</td>
+      <td class="num">{{ projekt_belege.get(p, 0) }}</td>
+      <td>
+        {% if p != "default" %}
+        <form method="post" action="{{ href('/projekte/' ~ p ~ '/loeschen') }}" class="inline"
+              onsubmit="return confirm(this.dataset.frage)" data-frage="{{ _('Projekt „{name}“ mit allen Belegen wirklich löschen?', name=p) }}">
+          <button type="submit" class="danger">{{ _("Projekt löschen") }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">{{ _("Beim Löschen bleiben die Original-Dateien (PDFs) im Projektordner erhalten.") }}</p>
+{% endblock %}
