@@ -811,6 +811,7 @@ def projekte(
         meldung=meldung,
         fehler=fehler,
         projekt_belege=belege,
+        reste=h.leftover_folders(),
     )
 
 
@@ -836,11 +837,30 @@ def projekt_loeschen(name: str, projekt: str | None = Query(default=None)):
         return _redirect(
             "/projekte", layout.name, fehler="Das Standardprojekt kann nicht gelöscht werden."
         )
+    ziel = "default" if layout.name == name else layout.name
+    alt = h.resolve(name)
+    if alt.name == name and not alt.db_path.exists() and alt.root.is_dir():
+        # Only a folder is left (database already deleted, PDFs kept): remove empty dirs.
+        rest = h.remove_empty_project_folder(alt)
+        if rest:
+            return _redirect(
+                "/projekte",
+                ziel,
+                fehler=f"Ordner „{name}“ enthält noch {rest} Datei(en) und wurde nicht gelöscht: "
+                f"{alt.root}",
+            )
+        return _redirect("/projekte", ziel, meldung="Leerer Projektordner entfernt.")
     try:
         _api.delete_project(name, keep_pdfs=True)
     except HTTPException as exc:
         return _redirect("/projekte", layout.name, fehler=str(exc.detail))
-    ziel = "default" if layout.name == name else layout.name
+    rest = h.remove_empty_project_folder(alt)  # PDFs kept: drop the folder if nothing is in it
+    if rest:
+        return _redirect(
+            "/projekte",
+            ziel,
+            meldung=f"Projekt gelöscht. Die Original-Dateien liegen weiter in {alt.root}.",
+        )
     return _redirect("/projekte", ziel, meldung="Projekt gelöscht.")
 
 

@@ -34,4 +34,25 @@
   </tbody>
 </table>
 <p class="hint">{{ _("Beim Löschen bleiben die Original-Dateien (PDFs) im Projektordner erhalten.") }}</p>
+
+{% if reste %}
+<section class="card">
+  <h2>{{ _("Ordner ohne Datenbank") }}</h2>
+  <p class="hint">{{ _("Reste gelöschter Projekte. Sie erscheinen nicht mehr in der Projektauswahl.") }}</p>
+  <table class="list">
+    <tbody>
+    {% for name, dateien in reste %}
+      <tr>
+        <td class="mono">{{ name }}</td>
+        <td>{% if dateien %}{{ _("{n} Datei(en), bitte selbst prüfen", n=dateien) }}{% else %}{{ _("leer") }}{% endif %}</td>
+        <td>{% if not dateien %}
+          <form method="post" action="{{ href('/projekte/' ~ name ~ '/loeschen') }}" class="inline">
+            <button type="submit" class="link">{{ _("Ordner entfernen") }}</button>
+          </form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 {% endblock %}

@@ -183,6 +183,9 @@ class TestSkeleton:
     def test_navigation_and_project_selector(self, client, home):
         (home / "default").mkdir()
         (home / "zweites").mkdir()
+        (
+            home / "zweites" / "finamt.db"
+        ).touch()  # a project has a database (bare folders are leftovers)
         html = _get(client, "/app").text
         for label in ("Übersicht", "Belege", "UStVA", "EÜR", "Rechnungen", "Stammdaten"):
             assert f">{label}</a>" in html
@@ -1398,3 +1401,61 @@ class TestEuerElster:
         self._daten()
         self._post(client, "xml")
         assert 'value="IT-Beratung"' in _get(client, "/app/euer", jahr=2025).text
+
+
+# ---------------------------------------------------------------------------
+# Bug (owner, 2026-11-20): deleting a project that only exists as a folder said "not found"
+# ---------------------------------------------------------------------------
+
+
+class TestProjektReste:
+    def _rest(self, name="sahraoui-consulting", datei=False):
+        root = project_mod.resolve_project(name, env_var=False).root
+        (root / "pdfs").mkdir(parents=True)
+        (root / "submitted_returns").mkdir()
+        if datei:
+            (root / "pdfs" / "beleg.pdf").write_bytes(b"%PDF")
+        return root
+
+    def test_leftover_folder_not_in_project_selection(self, client):
+        self._rest()
+        html = _get(client, "/app").text
+        assert '<option value="sahraoui-consulting"' not in html
+
+    def test_leftover_listed_and_removed(self, client):
+        root = self._rest()
+        html = _get(client, "/app/projekte").text
+        assert "Ordner ohne Datenbank" in html and "sahraoui-consulting" in html
+        resp = client.post(
+            "/app/projekte/sahraoui-consulting/loeschen", params={"projekt": PROJEKT}
+        )
+        assert "Leerer Projektordner entfernt." in resp.text
+        assert "not found" not in resp.text
+        assert not root.exists()
+
+    def test_leftover_with_files_is_kept(self, client):
+        root = self._rest(datei=True)
+        assert "1 Datei(en), bitte selbst prüfen" in _get(client, "/app/projekte").text
+        resp = client.post(
+            "/app/projekte/sahraoui-consulting/loeschen", params={"projekt": PROJEKT}
+        )
+        assert "enthält noch 1 Datei(en)" in resp.text
+        assert (root / "pdfs" / "beleg.pdf").exists()
+
+    def test_delete_leaves_no_empty_folder(self, client):
+        client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "kurz"})
+        root = project_mod.resolve_project("kurz", env_var=False).root
+        assert root.exists()
+        resp = client.post("/app/projekte/kurz/loeschen", params={"projekt": "kurz"})
+        assert "Projekt gelöscht." in resp.text
+        assert not root.exists()
+        assert "Ordner ohne Datenbank" not in resp.text
+
+    def test_delete_with_pdfs_keeps_them_and_hides_project(self, client):
+        client.post("/app/projekte", params={"projekt": PROJEKT}, data={"name": "mitpdf"})
+        root = project_mod.resolve_project("mitpdf", env_var=False).root
+        (root / "pdfs" / "a.pdf").write_bytes(b"%PDF")
+        resp = client.post("/app/projekte/mitpdf/loeschen", params={"projekt": "mitpdf"})
+        assert "Die Original-Dateien liegen weiter" in resp.text
+        assert (root / "pdfs" / "a.pdf").exists()
+        assert '<option value="mitpdf"' not in resp.text

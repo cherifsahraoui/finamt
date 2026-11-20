@@ -132,10 +132,13 @@ def validate_project_name(name: str) -> str | None:
     return None
 
 
-def list_projects() -> list[ProjectLayout]:
+def list_projects(*, with_db_only: bool = False) -> list[ProjectLayout]:
     """
     Scan FINAMT_HOME for project subdirectories.
     Returns layouts sorted: default first, then alphabetically.
+
+    ``with_db_only=True`` (FreiBuch UI) skips folders without ``finamt.db``, e.g. what is
+    left after deleting a project whose PDFs were kept. Default: every folder (upstream).
     """
     if not FINAMT_HOME.exists():
         return []
@@ -145,6 +148,8 @@ def list_projects() -> list[ProjectLayout]:
         if not subdir.is_dir():
             continue
         db = subdir / DB_FILENAME
+        if with_db_only and not db.exists():
+            continue
         layouts.append(
             ProjectLayout(
                 name=subdir.name,

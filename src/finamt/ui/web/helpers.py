@@ -47,10 +47,48 @@ def resolve(projekt: str | None) -> _project.ProjectLayout:
 
 
 def project_names(current: str) -> list[str]:
-    names = [p.name for p in _project.list_projects()]
-    if current not in names:
-        names.insert(0, current)
+    """Projects with a database, plus "default" and the current one (may not exist yet)."""
+    names = [p.name for p in _project.list_projects(with_db_only=True)]
+    for name in (current, _project.DEFAULT_PROJECT):
+        if name not in names:
+            names.insert(0, name)
+    names.sort(key=lambda n: (n != _project.DEFAULT_PROJECT, n))
     return names
+
+
+def leftover_folders() -> list[tuple[str, int]]:
+    """
+    Folders in FINAMT_HOME without ``finamt.db`` (e.g. after a project was deleted and its
+    PDFs kept): ``(name, number of files inside)``. "default" is never listed.
+    """
+    have_db = {p.name for p in _project.list_projects(with_db_only=True)}
+    out = []
+    for p in _project.list_projects():
+        if p.name in have_db or p.is_default:
+            continue
+        out.append((p.name, sum(1 for f in p.root.rglob("*") if f.is_file())))
+    return out
+
+
+def remove_empty_project_folder(layout: _project.ProjectLayout) -> int:
+    """
+    Remove a project folder that has no database, but only its **empty** directories.
+    Never deletes a file. Returns the number of files left (0 = folder removed).
+    """
+    if layout.db_path.exists() or not layout.root.is_dir():
+        return 0
+    for d in sorted(
+        (p for p in layout.root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True
+    ):
+        try:
+            d.rmdir()
+        except OSError:
+            pass  # not empty: files stay
+    try:
+        layout.root.rmdir()
+    except OSError:
+        return sum(1 for f in layout.root.rglob("*") if f.is_file())
+    return 0
 
 
 @contextmanager

@@ -127,6 +127,12 @@ Branch `baseline/fable-1`:
   served unchanged at `/legacy-ui` instead of `/`; unknown paths return 404 instead of the SPA.
   The bundle itself is not modified.
 
+### Project folders without a database (bug fix, 2026-11-20)
+- `src/finamt/storage/project.py` (upstream file): `list_projects(with_db_only=True)` skips
+  folders without `finamt.db`. Upstream's default (every folder) is unchanged, so the old UI
+  behaves as before. The new UI no longer offers such leftovers as projects (deleting one said
+  "Project … not found") and removes them from the Projekte page if they are empty.
+
 ### Outgoing invoices (task INV-1, 2026-11-20)
 - New package `src/finamt/invoicing/` and CLI group `finamt invoice` (FreiBuch's own code).
 - `src/finamt/storage/sqlite.py` (upstream file): new tables `invoice_sequence` and `invoices`

@@ -422,6 +422,14 @@ EN: dict[str, str] = {
     ),
     "Projekt angelegt.": "Project created.",
     "Projekt gelöscht.": "Project deleted.",
+    "Leerer Projektordner entfernt.": "Empty project folder removed.",
+    "Ordner ohne Datenbank": "Folders without a database",
+    "Reste gelöschter Projekte. Sie erscheinen nicht mehr in der Projektauswahl.": (
+        "Leftovers of deleted projects. They no longer appear in the project selection."
+    ),
+    "{n} Datei(en), bitte selbst prüfen": "{n} file(s), please check yourself",
+    "leer": "empty",
+    "Ordner entfernen": "Remove folder",
     "Das Standardprojekt kann nicht gelöscht werden.": "The default project can't be deleted.",
     "Partner": "Partners",
     "Partnerliste": "Partner list",

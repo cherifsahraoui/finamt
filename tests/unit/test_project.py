@@ -190,3 +190,15 @@ class TestListProjects:
         (tmp_path / "some-file.txt").touch()
         layouts = list_projects()
         assert all(p.name != "some-file.txt" for p in layouts)
+
+
+class TestListProjectsWithDbOnly:
+    def test_skips_folders_without_db(self, tmp_path, monkeypatch):
+        import finamt.storage.project as proj_mod
+
+        monkeypatch.setattr(proj_mod, "FINAMT_HOME", tmp_path)
+        (tmp_path / "rest" / "pdfs").mkdir(parents=True)
+        (tmp_path / "echt").mkdir()
+        (tmp_path / "echt" / "finamt.db").touch()
+        assert [p.name for p in list_projects(with_db_only=True)] == ["echt"]
+        assert {p.name for p in list_projects()} == {"echt", "rest"}  # upstream default
