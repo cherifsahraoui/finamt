@@ -1657,7 +1657,7 @@ class TestDruckApi:
                 return SubmissionResult(success=True)
 
         monkeypatch.setattr(elster, "ElsterEricClient", Fake)
-        monkeypatch.setenv("FINAMT_ERIC_HOME", str(tmp_path))
+        monkeypatch.setenv("ERIC_LIBRARY_PATH", str(tmp_path))
         return calls
 
     def test_send_stores_and_records_pdf(self, home, monkeypatch, tmp_path):

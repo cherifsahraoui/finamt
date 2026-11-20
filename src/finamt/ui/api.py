@@ -1341,6 +1341,39 @@ def get_submission_result(
     return {"amount": float(-report.net_liability)}
 
 
+def _eric_home(db_path: Path) -> str:
+    """ERiC library directory for the UStVA / USt routes (decision D4, CFG-1).
+
+    ``ERIC_LIBRARY_PATH`` first; then the deprecated ``FINAMT_ERIC_HOME`` (with a
+    ``DeprecationWarning``); then the path saved in the project (Stammdaten).
+    """
+    import logging
+    import os as _os
+    import warnings
+
+    from finamt.tax.eur_elster import ERIC_LIBRARY_ENV
+
+    eric_home = _os.environ.get(ERIC_LIBRARY_ENV, "").strip()
+    if not eric_home:
+        legacy = _os.environ.get("FINAMT_ERIC_HOME", "").strip()
+        if legacy:
+            msg = f"FINAMT_ERIC_HOME is deprecated; set {ERIC_LIBRARY_ENV} instead."
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
+            logging.getLogger(__name__).warning(msg)
+            eric_home = legacy
+    if not eric_home and db_path.exists():
+        with _repo(db_path) as _r:
+            _em = _r.get_metadata("elster_eric_home") or {}
+        eric_home = (_em.get("path") or "").strip()
+    if not eric_home:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ERiC library path not configured. Set the {ERIC_LIBRARY_ENV} "
+            "environment variable.",
+        )
+    return eric_home
+
+
 @app.post("/tax/ustva/submit", tags=["tax"])
 def post_ustva_submit(
     body: UStVASubmitRequest,
@@ -1471,16 +1504,7 @@ def post_ustva_submit(
         city=city,
     )
 
-    eric_home = _os.environ.get("FINAMT_ERIC_HOME", "")
-    if not eric_home and db_path.exists():
-        with _repo(db_path) as _r:
-            _em = _r.get_metadata("elster_eric_home") or {}
-        eric_home = _em.get("path") or ""
-    if not eric_home:
-        raise HTTPException(
-            status_code=400,
-            detail="ERiC library path not configured. Set FINAMT_ERIC_HOME environment variable.",
-        )
+    eric_home = _eric_home(db_path)
 
     eric_log_dir = str(layout.root / "eric_logs")
     client = ElsterEricClient(
@@ -1828,16 +1852,7 @@ def post_uste_submit(
     )
 
     # ── ERiC home ─────────────────────────────────────────────────────
-    eric_home = _os.environ.get("FINAMT_ERIC_HOME", "")
-    if not eric_home and db_path.exists():
-        with _repo(db_path) as _r:
-            _em = _r.get_metadata("elster_eric_home") or {}
-        eric_home = _em.get("path") or ""
-    if not eric_home:
-        raise HTTPException(
-            status_code=400,
-            detail="ERiC library path not configured. Set FINAMT_ERIC_HOME environment variable.",
-        )
+    eric_home = _eric_home(db_path)
 
     eric_log_dir = str(layout.root / "eric_logs")
     client = ElsterEricClient(
