@@ -225,7 +225,7 @@ Branch `baseline/fable-1`:
 - `README.md`: rewritten for the fork's goal (free Freiberufler VAT + EÜR tool): status table,
   roadmap, yearly workflow, category → EÜR Kennzahl table, safety and ELSTER setup. Upstream
   PyPI/badge/commercial-licensing sections removed; upstream credited under "License and credits".
-  `readme/README_de.md` is unchanged (DOC-1).
+  `readme/README_de.md` was rewritten as a translation of it later (DOC-1, 2026-11-20).
 
 ### Windows GPU model loading
 - `src/finamt/agents/llm_backend.py` (upstream file): report whether the Hugging Face model is

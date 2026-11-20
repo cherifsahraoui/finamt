@@ -1,466 +1,238 @@
-# finamt
+# FreiBuch
 
-<img src="https://raw.githubusercontent.com/spaceoctahedron/finamt/main/.github/images/finamt-wordmark.svg" width="50%" alt="finamt"/>
+Ein freies, lokales Open-Source-Werkzeug, mit dem **ein deutscher Freiberufler** Umsatzsteuer und
+EÜR selbst erledigt, ohne ein bezahltes Buchhaltungs-Abo wie Accountable:
 
-<div>
-<br>
-</div>
+**Belege rein → UStVA → Umsatzsteuererklärung → EÜR → ELSTER**
 
-<div align="center">
+Alles läuft auf dem eigenen Rechner. Belege, Datenbank und ELSTER-Zertifikat verlassen ihn nie,
+außer bei der ELSTER-Übermittlung selbst.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI version](https://img.shields.io/pypi/v/finamt?color=blue&label=PyPI)](https://pypi.org/project/finamt/)
-[![Downloads](https://pepy.tech/badge/finamt)](https://pepy.tech/project/finamt)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://github.com/spaceoctahedron/finamt/blob/main/LICENSE)
-[![Tests](https://github.com/spaceoctahedron/finamt/actions/workflows/tests.yml/badge.svg)](https://github.com/spaceoctahedron/finamt/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/yauheniya-ai/d09f6edc7b1928aeea1fbde834a6080b/raw/coverage.json)](https://github.com/spaceoctahedron/finamt/actions/workflows/tests.yml)
-[![GitHub last commit](https://img.shields.io/github/last-commit/spaceoctahedron/finamt)](https://github.com/spaceoctahedron/finamt/commits/main)
-[![Documentation Status](https://readthedocs.org/projects/finamt/badge/?version=latest)](https://readthedocs.org/projects/finamt/)
+> FreiBuch ist ein Fork von [spaceoctahedron/finamt](https://github.com/spaceoctahedron/finamt)
+> (AGPL-3.0), zugeschnitten auf Freiberufler. Was geändert wurde, steht in [NOTICE.md](../NOTICE.md).
+> Python-Paket, CLI-Befehl `finamt`, Datenordner `~/.finamt/` und die `FINAMT_*`-Einstellungen
+> heißen vorerst noch wie im Original; die Befehle unten lauten deshalb `finamt`.
+> Keine Steuerberatung; siehe [Haftungsausschluss](#haftungsausschluss).
 
-![US](https://api.iconify.design/noto-v1/flag-for-flag-united-states.svg?height=16) [English](https://github.com/spaceoctahedron/finamt/blob/main/README.md) | ![DE](https://api.iconify.design/noto-v1/flag-for-flag-germany.svg?height=16) Deutsch
+## Was es heute kann
 
-</div>
+| Aufgabe | Stand | Wie |
+|---|---|---|
+| Belege und Rechnungen (PDF/Scan) mit OCR + lokalem LLM lesen | ✅ funktioniert | `finamt process`, `finamt batch`, Web-UI |
+| Belege speichern, Duplikate erkennen, kategorisieren | ✅ funktioniert | lokale SQLite in `~/.finamt/<projekt>/` |
+| UStVA berechnen (vierteljährlich) | ✅ funktioniert | `finamt ustva --quarter Q --year Y` |
+| UStVA berechnen (monatlich) | ✅ funktioniert | `finamt ustva --month M --year Y` |
+| Monatlich oder vierteljährlich? (§ 18 Abs. 2 UStG) | ✅ Hinweis aus der Vorjahressteuer | `finamt ustva --suggest-period --year Y` |
+| UStVA / Umsatzsteuererklärung über ELSTER (ERiC) **übermitteln** | ✅ von ERiC 44.3 geprüft; Testmodus; Echtbetrieb nur mit ausdrücklichem Schalter ([M2](../docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](../docs/MANUAL-STEPS.md#m4-file-for-real)) | Web-UI `/app/ustva` (`finamt serve`) oder API |
+| EÜR mit den Kennzahlen der Anlage EÜR 2025 | ✅ funktioniert, mit USt-Zeilen (Kz 140/141/185/186) | `finamt eur --year Y`, Web-UI `/app/euer` |
+| EÜR über ELSTER übermitteln | 🧪 ERiC-Prüfung, XML-Download und Testversand; Echtbetrieb abgeschaltet (D3); ein Testversand durch den Eigentümer fehlt noch (EUR-6) | Web-UI `/app/euer`, `finamt eur --validate / --xml` |
+| Amtliches PDF (ERiC-Druck) von UStVA, USt-Erklärung und EÜR | ✅ Vorschau vor dem Senden; Kopie nach dem Senden im Archiv (PRINT-1) | Web-UI „Druckansicht (PDF)“, `finamt eur --pdf` |
+| Gutschriften in der UStVA (negative Bemessungsgrundlage und Steuer) | ✅ funktioniert (UST-2) | — |
+| 0 %, steuerfreie und Reverse-Charge-Belege in der UStVA (Kz 87, 48, 21, 45, 60, 46/47, 84/85, 67) | ✅ UStVA und EÜR (UST-3, UST-4); die USt-Erklärung lehnt sie vorerst ab | Belegformular „USt-Behandlung“ |
+| Rechnungen schreiben (§ 14 UStG), lückenlose Nummern, PDF, Storno | ✅ funktioniert (INV-1) | Web-UI `/app/rechnungen`, `finamt invoice new --file F.json` |
+| Zusammenfassende Meldung für EU-Kunden | 🧮 nur Berechnung (ZM-1); noch kein Versand | `finamt.tax.generate_zm` |
+| Kleinunternehmer (§ 19 UStG) | ✅ EÜR und Rechnungen; Jahre in den Stammdaten (EUR-8) | Web-UI, `finamt eur --kleinunternehmer` |
 
-Eine agentische Python-Bibliothek zur strukturierten Extraktion von Daten aus Belegen und Rechnungen sowie zur Erstellung wesentlicher deutscher Steuererklärungen.
+Nicht enthalten: KSt, GewSt, E-Bilanz, Jahresabschluss, Einkommensteuer. Der Original-Code dafür
+liegt in [`legacy/`](../legacy/README.md) und wird nicht installiert.
 
-## Funktionen
+## Fahrplan
 
-- **Deutsche Steuerkonformität** — Kategoriensystem und Umsatzsteuerbehandlung ausgerichtet auf die deutsche Buchführungspraxis
-- **Lokal & Offline** — Alles läuft vollständig offline; Modelle werden automatisch von HuggingFace heruntergeladen und lokal gecacht, Daten werden in einer lokalen Datenbank gespeichert
-- **4-Agenten-Pipeline** — Vier sequenzielle, spezialisierte Agenten für Metadaten, Geschäftspartner, Beträge und Positionen; kurze, fokussierte Prompts für zuverlässige Leistung mit lokalen Modellen
-- **Web-Oberfläche** — Vollständige Browseroberfläche zum Hochladen, Prüfen, Bearbeiten und Verwalten von Belegen
-- **ELSTER-Übermittlung** — Umsatzsteuerjahreserklärung (USt 2A), E-Bilanz und UStVA werden direkt über die offizielle ERiC-Bibliothek ans Finanzamt übermittelt; Ende-zu-Ende-Funktionalität durch Eingangsbestätigung des Finanzamts belegt
+Die Arbeit ist in kleine Aufgaben aufgeteilt, die ein KI-Agent (oder ein Mensch) einzeln
+übernehmen kann. Die vollständige Liste mit Schritten und Tests steht in
+**[docs/TODO.md](../docs/TODO.md)**. Als Nächstes:
 
-## Technologie-Stack
+1. **EUR-6 / EUR-7**: EÜR-Testversand durch den Eigentümer; Kz 151 braucht die Aufteilung nach Zeile 42
 
-**Backend**
-- ![Python](https://api.iconify.design/devicon/python.svg?height=16) [Python](https://www.python.org) — Paketsprache
-- ![FastAPI](https://api.iconify.design/devicon/fastapi.svg?height=16) [FastAPI](https://fastapi.tiangolo.com) — Backend der Web-Oberfläche
-- ![PaddleOCR](https://api.iconify.design/simple-icons/paddlepaddle.svg?height=16&color=%23363FE5) [PaddleOCR](https://github.com/PADDLEPADDLE/PADDLEOCR) — OCR für gescannte PDFs
-- ![Tesseract](https://api.iconify.design/devicon/google.svg?height=16) [Tesseract](https://github.com/tesseract-ocr/tesseract) — OCR für gescannte PDFs und Bilder als Fallback bei PaddleOCR-Fehlern oder Timeouts
-- ![HuggingFace](https://api.iconify.design/simple-icons/huggingface.svg?height=16&color=%23FFD21E) [HuggingFace Hub](https://huggingface.co) — Modelle werden beim ersten Start automatisch heruntergeladen und gecacht; kein separater Server erforderlich
-    - ![Mistral](https://api.iconify.design/logos/mistral-ai-icon.svg?height=16) [Mistral](https://mistral.ai) — `mistral:7b` ist das empfohlene Standardmodell (auf Apple Silicon: `mlx-community/Mistral-7B-Instruct-v0.3-4bit`)
-    - ![Qwen](https://api.iconify.design/simple-icons/qwen.svg?height=16&color=%237B2FBF) [Qwen](https://qwen.ai/home) — `qwen2.5:7b-instruct-q4_K_M` ist eine gute Alternative (auf Apple Silicon: `mlx-community/Qwen2.5-7B-Instruct-4bit`)
-    - ![mlx-lm](https://api.iconify.design/simple-icons/apple.svg?height=16) [mlx-lm](https://github.com/ml-explore/mlx-lm) — 4-Bit-Inferenz auf Apple Silicon (M-Serie) via MLX; ca. 13 % schneller als Ollama
-    - ![transformers](https://api.iconify.design/simple-icons/huggingface.svg?height=16&color=%23FFD21E) [transformers](https://huggingface.co/docs/transformers) — Plattformübergreifender Inferenz-Fallback (Linux / Windows / Intel Mac)
-- ![SQLite](https://api.iconify.design/devicon/sqlite.svg?height=16) [SQLite](https://sqlite.org) — Lokale Datenbank für Originalbelege und extrahierte Daten
-
-**Frontend**
-- ![React](https://api.iconify.design/devicon/react.svg?height=16) [React](https://react.dev) — Interaktives Frontend
-- ![Vite](https://api.iconify.design/devicon/vitejs.svg?height=16) [Vite](https://vite.dev) — Schneller Dev-Server und Produktions-Bundler
-- ![Tailwind CSS](https://api.iconify.design/devicon/tailwindcss.svg?height=16) [Tailwind CSS](https://tailwindcss.com) — Utility-First-Styling
-- ![TypeScript](https://api.iconify.design/devicon/typescript.svg?height=16) [TypeScript](https://www.typescriptlang.org) — Typsichere Komponenten- und API-Code
-
-
-**CLI**
-- ![Typer](https://api.iconify.design/devicon/typer.svg?height=16) [Typer](https://typer.tiangolo.com/) — CLI mit farbiger Fortschrittsausgabe
-
-**Paketierung**
-- ![PyPI](https://api.iconify.design/devicon/pypi.svg?height=16) [PyPI](https://pypi.org/project/finamt/) — Als installierbares Python-Paket verteilt
+Grundsatzentscheidungen (CLI zuerst, kein Echtversand per Voreinstellung, …) stehen in
+[docs/DECISIONS.md](../docs/DECISIONS.md).
 
 ## Installation
 
-```bash
-pip install finamt
-```
-
-Für die CLI-Nutzung empfiehlt sich die Installation über [pipx](https://pipx.pypa.io/) — das Paket läuft in einer isolierten Umgebung, sodass seine Abhängigkeiten nie mit anderen Projekten kollidieren, während der `finamt`-Befehl systemweit verfügbar bleibt, ohne dass eine virtuelle Umgebung aktiviert werden muss:
+Python 3.10–3.13. Aus dem Quellcode:
 
 ```bash
-pipx install finamt
+git clone https://github.com/cherifsahraoui/FreiBuch.git
+cd FreiBuch
+uv sync --extra dev          # oder: python -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
+uv run finamt --help
 ```
 
-> **Hinweis für Python 3.14+-Nutzer:** `finamt` erfordert derzeit Python 3.13. Falls das System-Python 3.14 oder neuer ist, kann [uv](https://docs.astral.sh/uv/) zur Verwaltung von Python-Versionen genutzt werden:
-> ```bash
-> uv python install 3.13
-> pipx install finamt --python $(uv python find 3.13)
-> ```
+Beim ersten Einsatz werden OCR- und LLM-Modelle von HuggingFace geladen und in
+`~/.cache/huggingface/hub` zwischengespeichert. Tesseract ist ein optionaler OCR-Ersatz:
+`sudo apt-get install tesseract-ocr tesseract-ocr-deu` oder `brew install tesseract tesseract-lang`.
 
-### Systemvoraussetzungen
+### Windows mit einer NVIDIA-GPU der GTX-10-Serie
 
-- Python 3.10+
-- Tesseract OCR (optionaler Fallback bei PaddleOCR-Timeout)
+Das normale PyTorch-Paket für Windows kann CPU-only sein. Auf Pascal-GPUs wie der GTX 1070/1070 Ti
+nach dem Einrichten des Projekts den CUDA-12.6-Build von PyTorch und `bitsandbytes` installieren:
 
-> **Kein Ollama erforderlich.** LLM-Modelle werden beim ersten Start automatisch von HuggingFace heruntergeladen (ca. 4 GB pro Modell) und unter `~/.cache/huggingface/hub` gecacht. Auf Apple Silicon wird das `mlx-lm`-Backend verwendet; auf anderen Plattformen `transformers`.
-
-#### Tesseract OCR (optionaler Fallback für PaddleOCR)
-
-**Ubuntu / Debian**
-```bash
-sudo apt-get install tesseract-ocr tesseract-ocr-deu
+```powershell
+.\.venv\Scripts\python.exe -m ensurepip --upgrade
+.\.venv\Scripts\python.exe -m pip install --upgrade "torch==2.7.1" --index-url https://download.pytorch.org/whl/cu126
+.\.venv\Scripts\python.exe -m pip install "bitsandbytes>=0.43.0"
+.\.venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU fallback')"
 ```
 
-**macOS**
-```bash
-brew install tesseract tesseract-lang
-```
+Die Prüfung sollte `True` und den GPU-Namen ausgeben. Beide Installationen nach einem späteren
+`uv sync` wiederholen, denn er kann den CPU-only-Build zurückholen und `bitsandbytes` entfernen.
 
-**Windows**
+## Ein Jahr mit FreiBuch
 
-Installer herunterladen von https://github.com/UB-Mannheim/tesseract/wiki und zum `PATH` hinzufügen.
-
-## Schnellstart
-
-### Interaktive Oberfläche
-
-```bash
-finamt serve
-```
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/spaceoctahedron/finamt/main/docs/images/Demo.webp" width="100%" />
-  <em>Interaktive Oberfläche zum Hochladen von Belegen und Verwalten von Steuererklärungen</em>
-</p>
-
-### Python-API
-
-#### Einzelnen Beleg verarbeiten (Ausgabe)
-
-```python
-from finamt import FinanceAgent
-
-agent = FinanceAgent()
-result = agent.process_receipt("beleg.pdf")
-
-if result.success:
-    data = result.data
-    print(f"Geschäftspartner: {data.vendor}")
-    print(f"Datum:            {data.receipt_date}")
-    print(f"Gesamtbetrag:     {data.total_amount} EUR")
-    print(f"MwSt.:            {data.vat_percentage}% ({data.vat_amount} EUR)")
-    print(f"Nettobetrag:      {data.net_amount} EUR")
-    print(f"Kategorie:        {data.category}")
-    print(f"Positionen:       {len(data.items)}")
-
-    # Als JSON serialisieren
-    with open("extrahiert.json", "w", encoding="utf-8") as f:
-        f.write(data.to_json())
-else:
-    print(f"Extraktion fehlgeschlagen: {result.error_message}")
-```
-
-#### Ausgangsrechnungen
-
-```python
-result = agent.process_receipt("rechnung_an_kunden.pdf", receipt_type="sale")
-```
-
-#### Stapelverarbeitung
-
-```python
-from pathlib import Path
-from finamt import FinanceAgent
-
-agent = FinanceAgent()
-results = agent.batch_process(list(Path("belege/").glob("*.pdf")))
-
-for path, result in results.items():
-    if result.success:
-        print(f"{path}: {result.data.total_amount} EUR")
-    else:
-        print(f"{path}: FEHLER — {result.error_message}")
-```
-
-## Konfiguration
-
-Einstellungen werden in folgender Prioritätsreihenfolge eingelesen: Umgebungsvariablen → `.env`-Datei → eingebaute Standardwerte.
-
-```bash
-# .env
-
-# OCR und allgemeine Einstellungen
-FINAMT_OCR_LANGUAGE=german
-FINAMT_OCR_TIMEOUT=60
-FINAMT_TESSERACT_CMD=tesseract
-FINAMT_OCR_PREPROCESS=true
-FINAMT_PDF_DPI=150
-
-# Extraktionsagenten — alle 4 Agenten verwenden dieses Modell
-FINAMT_AGENT_MODEL=mistral:7b
-FINAMT_AGENT_TIMEOUT=60
-FINAMT_AGENT_NUM_CTX=4096
-FINAMT_AGENT_MAX_RETRIES=2
-```
-
-Konfigurationsobjekte können auch direkt übergeben werden:
-
-```python
-from finamt import FinanceAgent
-from finamt.agents.config import Config, AgentsConfig
-
-agent = FinanceAgent(
-    config=Config(ocr_language="deu+eng", pdf_dpi=150),
-    agents_cfg=AgentsConfig(agent_model="mistral:7b"),
-)
-```
-
-## API-Referenz
-
-### FinanceAgent
-
-```python
-class FinanceAgent:
-    def __init__(
-        self,
-        config:     Config | None = None,
-        db_path:    str | Path | None = "~/.finamt/default/finamt.db",
-        agents_cfg: AgentsConfig | None = None,
-    ) -> None: ...
-
-    def process_receipt(
-        self,
-        pdf_path:     str | Path | bytes,
-        receipt_type: str = "purchase",   # "purchase" oder "sale"
-    ) -> ExtractionResult: ...
-
-    def batch_process(
-        self,
-        pdf_paths:    list[str | Path],
-        receipt_type: str = "purchase",
-    ) -> dict[str, ExtractionResult]: ...
-```
-
-### ExtractionResult
-
-`success` sollte immer vor dem Zugriff auf `data` geprüft werden.
-
-```python
-@dataclass
-class ExtractionResult:
-    success:         bool
-    data:            ReceiptData | None
-    error_message:   str | None
-    duplicate:       bool                  # True, wenn bereits in der Datenbank
-    existing_id:     str | None            # ID des Originals bei Duplikat
-    processing_time: float | None          # Sekunden
-
-    def to_dict(self) -> dict: ...
-```
-
-### ReceiptData
-
-```python
-@dataclass
-class ReceiptData:
-    id:               str                  # SHA-256 des OCR-Textes — stabiler Deduplizierungsschlüssel
-    receipt_type:     ReceiptType          # "purchase" oder "sale"
-    counterparty:     Counterparty | None  # Lieferant (Eingang) oder Kunde (Ausgang)
-    receipt_number:   str | None
-    receipt_date:     datetime | None
-    total_amount:     Decimal | None
-    currency:         str | "EUR"
-    vat_percentage:   Decimal | None       # z. B. Decimal("19.0")
-    vat_amount:       Decimal | None
-    net_amount:       Decimal | None       # berechnet: Gesamt minus MwSt.
-    category:         ReceiptCategory
-    items:            list[ReceiptItem]
-    vat_splits:       list[dict]           # für Rechnungen mit gemischten Steuersätzen
-
-    vendor: str | None                     # Alias für counterparty.name
-
-    def to_dict(self) -> dict: ...
-    def to_json(self) -> str: ...
-```
-
-### Counterparty
-
-```python
-@dataclass
-class Counterparty:
-    id:          str           # Von der Datenbank vergebene UUID
-    name:        str | None
-    vat_id:      str | None    # EU-Format, z. B. DE123456789
-    tax_number:  str | None    # Deutsche Steuernummer, z. B. 123/456/78901
-    address:     Address
-    verified:    bool          # Manuell in der Oberfläche bestätigt
-```
-
-### ReceiptItem
-
-```python
-@dataclass
-class ReceiptItem:
-    position:    int | None
-    description: str
-    quantity:    Decimal | None
-    unit_price:  Decimal | None
-    total_price: Decimal | None
-    vat_rate:    Decimal | None
-    vat_amount:  Decimal | None
-    category:    ReceiptCategory
-
-    def to_dict(self) -> dict: ...
-```
-
-### ReceiptCategory
-
-Eine validierte String-Unterklasse. Ungültige Werte werden stillschweigend auf `"other"` normalisiert.
-
-```python
-from finamt.agents.prompts import RECEIPT_CATEGORIES   # list[str]
-from finamt.models import ReceiptCategory
-
-cat = ReceiptCategory("software")       # gültig
-cat = ReceiptCategory("unbekannter_wert")  # wird auf "other" normalisiert
-cat = ReceiptCategory.other()           # expliziter Fallback
-```
-
-### Ausnahmen
-
-Alle Ausnahmen erben von `FinanceAgentError`.
-
-| Ausnahme | Wird ausgelöst bei |
-|---|---|
-| `OCRProcessingError` | PDF kann nicht geöffnet werden oder Textextraktion schlägt fehl |
-| `LLMExtractionError` | Modell gibt nach allen Versuchen kein gültiges JSON zurück |
-| `InvalidReceiptError` | Extrahierte Daten bestehen die fachliche Validierung nicht |
-
-```python
-from finamt.exceptions import FinanceAgentError, OCRProcessingError
-
-try:
-    result = agent.process_receipt("scan.pdf")
-except OCRProcessingError as e:
-    print(e)
-```
-
-## Extraktions-Pipeline
-
-Jeder Beleg durchläuft vier sequenzielle LLM-Aufrufe, jeweils mit einem kurzen, fokussierten Prompt:
-
-| Agent | Extrahiert |
-|---|---|
-| Agent 1 | Belegnummer, Datum, Kategorie |
-| Agent 2 | Name des Geschäftspartners, USt-IdNr., Steuernummer, Adresse |
-| Agent 3 | Gesamtbetrag, Umsatzsteuersatz, Umsatzsteuerbetrag |
-| Agent 4 | Positionen (Beschreibung, MwSt.-Satz, MwSt.-Betrag, Preis) |
-
-Die Ergebnisse werden in Python zusammengeführt — kein zusätzlicher LLM-Validierungsschritt. Die Debug-Ausgabe jedes Agenten (Prompt, Rohantwort, geparste JSON) wird unter `~/.finamt/debug/<beleg_id>/` gespeichert.
-
-## Kategorien und Unterkategorien
-
-Jeder Beleg wird mit einer Kategorie und einer optionalen Unterkategorie versehen. Kategorien entsprechen direkt den Positionen in den deutschen ELSTER-Formularen (EÜR / UStVA), sodass die richtigen Summen ohne manuelle Nachsortierung in die richtigen Felder einfließen.
-
-| Kategorie | Unterkategorien |
-|---|---|
-| ![services](https://api.iconify.design/mdi/briefcase.svg?height=16&color=%23EF4444) `services` | `freelance` `consulting` `legal` `accounting` `notary` |
-| ![products](https://api.iconify.design/ant-design/product-filled.svg?height=16&color=%23EF4444) `products` | `physical_goods` `digital_goods` `merchandise` `samples` |
-| ![material](https://api.iconify.design/solar/box-bold.svg?height=16&color=%23EF4444) `material` | `consumables` `raw_materials` `packaging` `merchandise` |
-| ![equipment](https://api.iconify.design/streamline-plump/computer-pc-desktop-solid.svg?height=16&color=%23EF4444) `equipment` | `low_value_asset` `computer` `machinery` `furniture` `tools` |
-| ![software](https://api.iconify.design/heroicons/cpu-chip-16-solid.svg?height=16&color=%23EF4444) `software` | `subscriptions` `pay_as_you_go` `licenses` `hosting` `domains` |
-| ![licensing](https://api.iconify.design/mdi/file-certificate.svg?height=16&color=%23EF4444) `licensing` | `software_licenses` `media_licenses` `other_ip` |
-| ![telecommunication](https://api.iconify.design/streamline-flex/satellite-dish-solid.svg?height=16&color=%23EF4444) `telecommunication` | `phone` `internet` `bundled` |
-| ![travel](https://api.iconify.design/mdi/airplane.svg?height=16&color=%23EF4444) `travel` | `transport` `accommodation` `meals` `per_diem` `incidental` |
-| ![car](https://api.iconify.design/boxicons/car-filled.svg?height=16&color=%23EF4444) `car` | `fuel` `parking` `garage` `repair` `maintenance` `insurance` `leasing` `rental` |
-| ![education](https://api.iconify.design/wpf/books.svg?height=16&color=%23EF4444) `education` | `courses` `books` `conferences` `certifications` |
-| ![utilities](https://api.iconify.design/roentgen/electricity.svg?height=16&color=%23EF4444) `utilities` | `electricity` `heating` `water` `waste` |
-| ![insurance](https://api.iconify.design/fa/shield.svg?height=16&color=%23EF4444) `insurance` | `liability` `health` `vehicle` `property` |
-| ![financial](https://api.iconify.design/boxicons/bank-filled.svg?height=16&color=%23EF4444) `financial` | `bank_fees` `interest` `loan_costs` `payment_fees` |
-| ![office](https://api.iconify.design/vaadin/office.svg?height=16&color=%23EF4444) `office` | `rent` `coworking` `storage` `cleaning` `security` |
-| ![marketing](https://api.iconify.design/mdi/loudspeaker.svg?height=16&color=%23EF4444) `marketing` | `advertising` `print_media` `trade_fairs` `sponsorship` `gifts` |
-| ![donations](https://api.iconify.design/mdi/donation.svg?height=16&color=%23EF4444) `donations` | `charitable` `political` `church` |
-| ![public_fees](https://api.iconify.design/mdi/gavel.svg?height=16&color=%23EF4444) `public_fees` | `broadcasting_fee` `ihk_hwk` `berufsgenossenschaft` `other_public_fee` |
-| ![other](https://api.iconify.design/flowbite/folder-plus-solid.svg?height=16&color=%23EF4444) `other` | `membership_fees` `sundry` |
-
-
-
-## Aufgabenliste
-
-**Belegverarbeitung**
-- [x] OCR-Pipeline (PaddleOCR + Tesseract-Fallback)
-- [x] 4-Agenten-Extraktion (Metadaten, Geschäftspartner, Beträge, Positionen)
-- [x] Deduplizierung, Datenbankspeicherung, Stapelverarbeitung
-
-**Steuerberechnung**
-- [x] UStVA — Umsatzsteuervoranmeldung (monatlich / vierteljährlich)
-- [x] UStE — Jährliche Umsatzsteuererklärung
-- [x] EÜR — Einnahmenüberschussrechnung
-- [x] KSt 1 — Körperschaftsteuererklärung
-- [x] GewSt — Gewerbesteuererklärung
-- [x] Jahresabschluss — Jahresabschluss (Bilanz + GuV, § 267a HGB)
-
-**ELSTER-Übermittlung**
-- [x] UStVA — ELSTER-XML-Generator + Kennzahlen-Mapper + RSA-Signierung + HTTP-Übermittlung
-- [x] E-Bilanz — XBRL-Instanzdokument (HGB-Taxonomie v6, MicroBilG-Schema)
-- [x] E-Bilanz — ERiC-ctypes-Brücke für die eigentliche Übermittlung
-- [x] USt — ELSTER-XML-Generator + ERiC-ctypes-Übermittlung (Ende-zu-Ende bestätigt)
-- [x] UStVA — ELSTER-XML-Generator + ERiC-ctypes-Übermittlung (Ende-zu-Ende bestätigt)
-- [ ] KSt — ELSTER-XML-Generator
-- [ ] GewSt — ELSTER-XML-Generator
-- [ ] EÜR, ESt — ELSTER-XML-Generator
-
-**Validierung**
-- [x] XSD-Validierung des generierten XBRL gegen die HGB-Taxonomie
-- [x] ELSTER-Probelauf / Testserver-Validierung vor der Live-Übermittlung
-
-## Mitwirken
-
-1. Repository forken
-2. Feature-Branch erstellen (`git checkout -b feature/meine-änderung`) und Änderungen vornehmen
-3. Testsuite ausführen:
+1. **Belege sammeln.** Eingangsrechnungen (`--type purchase`) und eigene Ausgangsrechnungen
+   (`--type sale`) in einen Ordner legen und einlesen:
    ```bash
-   pytest --cov=src --cov-report=term-missing
+   finamt batch --input-dir ~/belege/2025-q1 --type purchase
+   finamt batch --input-dir ~/rechnungen/2025-q1 --type sale
    ```
-4. Lint und Formatierung mit ![Ruff](https://api.iconify.design/catppuccin/ruff.svg?height=16) Ruff:
+   Oder in der Web-UI: `finamt serve`, dann hochladen, prüfen und korrigieren.
+2. **UStVA** jedes Quartal (oder jeden Monat, wenn die Vorjahressteuer über 9 000 € lag,
+   § 18 Abs. 2 UStG), fällig am 10. Tag nach Ablauf des Zeitraums:
    ```bash
-   ruff check --fix src/ tests/
-   ruff format src/ tests/
+   finamt ustva --suggest-period --year 2025          # monatlich oder vierteljährlich?
+   finamt ustva --quarter 1 --year 2025 --output ustva_q1_2025.json
+   finamt ustva --month 3 --year 2025                 # Monatszahler
    ```
-5. Dokumentation aktualisieren
-6. Pull Request einreichen
+   Zuerst aus der Web-UI im **Testmodus** senden. Für die echte Abgabe
+   [M4](../docs/MANUAL-STEPS.md#m4-file-for-real) folgen (Echtbetrieb braucht
+   `FINAMT_ALLOW_LIVE_SUBMISSION=1`).
+3. **Umsatzsteuererklärung** aus der Web-UI.
+4. **EÜR** für das Jahr (Kennzahlen der Anlage EÜR 2025 plus die Liste „ZU PRÜFEN“):
+   ```bash
+   finamt eur --year 2025 --output eur_2025.json      # mit --kleinunternehmer bei § 19 UStG
+   ```
+   Der Befehl endet mit Code 1, solange noch etwas unter ZU PRÜFEN steht.
+5. **Rechnungen** in der Web-UI (Rechnungen) oder per CLI; die nächste Nummer (`2025-0001`, …)
+   wird beim Anlegen vergeben, das PDF als Einnahme-Beleg gespeichert:
+   ```bash
+   finamt invoice new --file rechnung.json   # Kunde, Daten, Positionen; Absender aus den Stammdaten
+   finamt invoice list --year 2025
+   finamt invoice cancel 2025-0001            # Rechnungskorrektur mit eigener Nummer
+   ```
+   Was FreiBuch nicht sicher einordnen kann (Anlagegüter über 800 €, Bewirtung, Geschenke, Spenden,
+   Steuerzahlungen, Einlagen/Entnahmen), steht unter **ZU PRÜFEN** und zählt *nicht*, bis du
+   entscheidest. Solange die EÜR nicht übermittelt werden kann, die Kennzahlen von Hand in ELSTER
+   übertragen.
 
-## Lizenz
+## Kategorien und EÜR-Zeilen
 
-AGPL-3.0 — siehe [LICENSE](https://raw.githubusercontent.com/spaceoctahedron/finamt/main/LICENSE) für Details.
+Jeder Beleg hat eine Kategorie und optional eine Unterkategorie. Bei Ausgaben bestimmen sie die
+Zeile (Kennzahl) der Anlage EÜR 2025. Die Werte sind in [docs/tax-rules.md](../docs/tax-rules.md)
+mit Quelle belegt.
 
-## Kommerzielle Lizenzierung
+| Kategorie | Unterkategorien | EÜR-Kz (Ausgabe) |
+|---|---|---|
+| `services` | `freelance` `consulting` `legal` `accounting` `notary` | 110 Fremdleistungen; legal/accounting/notary → 194 |
+| `products` | `physical_goods` `digital_goods` `merchandise` `samples` | 100 |
+| `material` | `consumables` `raw_materials` `packaging` `merchandise` | 100; consumables → 229; packaging → 227 |
+| `equipment` | `low_value_asset` `computer` `machinery` `furniture` `tools` | 132 GWG bis 800 € netto; darüber → Prüfung (AfA) |
+| `software` | `subscriptions` `pay_as_you_go` `licenses` `hosting` `domains` | 228 EDV-Kosten |
+| `licensing` | `software_licenses` `media_licenses` `other_ip` | 183 |
+| `telecommunication` | `phone` `internet` `bundled` | 280 |
+| `travel` | `transport` `accommodation` `meals` `per_diem` `incidental` | 221; transport → 146; meals/per_diem → Prüfung |
+| `car` | `fuel` `parking` `garage` `repair` `maintenance` `insurance` `leasing` `rental` | 146; leasing → 144; insurance → 145 |
+| `education` | `courses` `books` `conferences` `certifications` | 281; books → 229 |
+| `utilities` | `electricity` `heating` `water` `waste` | 151 |
+| `insurance` | `liability` `health` `vehicle` `property` | 223; vehicle → 145; property → 151; health → Prüfung |
+| `financial` | `bank_fees` `interest` `loan_costs` `payment_fees` | 183; interest/loan_costs → 234 |
+| `office` | `rent` `coworking` `storage` `cleaning` `security` | 150; cleaning/security → 151 |
+| `marketing` | `advertising` `print_media` `trade_fairs` `sponsorship` `gifts` | 224; gifts → Prüfung |
+| `donations` | `charitable` `political` `church` | Prüfung |
+| `public_fees` | `broadcasting_fee` `ihk_hwk` `berufsgenossenschaft` `other_public_fee` | 223 |
+| `tax_settlement` | `vat_refund` `vat_payment` `income_tax` `trade_tax` `other_tax` | `vat_payment` → Kz 186, `vat_refund` → Kz 141; andere Steuern: Prüfung |
+| `capital_movement` | `owner_equity` `shareholder_loan` `withdrawal` | Prüfung (keine Betriebseinnahme/-ausgabe) |
+| `other` | `membership_fees` `sundry` | 183; membership_fees → 223 |
 
-finamt ist unter der AGPL-3.0-Lizenz verfügbar.
+Einnahmen: steuerpflichtig → Kz 112, 0 % / steuerfrei → Kz 103, Verkauf von Anlagegütern → Kz 102.
 
-Wer finamt in einem proprietären Umfeld nutzen möchte, ohne die AGPL-Pflichten zu erfüllen (z. B. ohne Offenlegung des Quellcodes oder für kommerzielle SaaS-Produkte), kann eine kommerzielle Lizenz erwerben.
+## Sicherheit
 
-Anfragen bitte an: info@spaceoctahedron.com
+- **Kein Echtversand per Voreinstellung.** Alles rechtlich Verbindliche an ELSTER braucht
+  `FINAMT_ALLOW_LIVE_SUBMISSION=1` in der eigenen Umgebung. Testübermittlungen (Testmerker) und
+  Prüfungen gehen immer. Der Echtversand der EÜR ist vorerst ganz abgeschaltet.
+- **Geheimnisse bleiben lokal.** Zertifikate (`.pfx`), `.env`, Datenbanken, ERiC-Bibliotheken und
+  Modelldateien sind von git ausgeschlossen. Echte Werte nur in `.env` eintragen (Vorlage:
+  [.env.example](../.env.example)).
+- **Nur belegte Zahlen.** Jeder Steuersatz, Schwellenwert und jede Kennzahl im Code steht mit
+  amtlicher Quelle in [docs/tax-rules.md](../docs/tax-rules.md). Unbelegtes ist als `TODO` markiert.
 
-## Drittanbieter-Komponenten und Modelle
+## ELSTER-Einrichtung und andere Handarbeit
 
-Diese Software ist abhängig von externen Bibliotheken und Diensten, darunter:
+Manche Schritte brauchen dich (ELSTER-Entwicklerzugang, Zertifikat oder eine Entscheidung). Sie
+stehen Schritt für Schritt in **[docs/MANUAL-STEPS.md](../docs/MANUAL-STEPS.md)**:
 
-- PaddleOCR (Apache License 2.0)
-- Tesseract OCR (Apache License 2.0)
-- HuggingFace Hub / transformers (Apache License 2.0)
-- mlx-lm (MIT License, nur Apple Silicon)
+| Schritt | Was |
+|---|---|
+| M1 | Hersteller-ID und Zertifikats-PIN in `.env` eintragen |
+| M2 | Erste Testübermittlung (`scripts/ustva_test_submission.py`) |
+| M3 | Entscheiden, wie Anlagegüter über 800 € abgeschrieben werden |
+| M4 | Echt abgeben (live), mit Checkliste |
+| M5 | Jährliches Update: neues ERiC, Dokumentation und Formulare nach `private/` laden |
+| M6 | Optional: beim Original-Projekt nach dem Quellcode der Web-UI fragen |
 
-finamt lädt Sprachmodelle (z. B. Mistral, Qwen) beim ersten Start von HuggingFace herunter und speichert sie lokal zwischen.
+ERiC selbst gehört in den von git ausgeschlossenen Ordner `private/`. Den **Windows-x86-64**-Build
+mit dem 64-Bit-Python aus `.venv` verwenden, und ERiC **44 oder neuer** (die API von ERiC 43 wird
+nicht mehr unterstützt). Der Pfad zur ERiC-Bibliothek steht in `ERIC_LIBRARY_PATH`.
 
-Diese Modelle werden **nicht** mit dieser Software ausgeliefert und unterliegen ihren eigenen Lizenzbedingungen.
-Die Nutzerinnen und Nutzer sind dafür verantwortlich, die jeweiligen Nutzungsbedingungen beim Herunterladen und Verwenden dieser Modelle einzuhalten.
+## Zur Web-UI
+
+`finamt serve` öffnet **FreiBuchs eigene Oberfläche** unter `http://127.0.0.1:8000/` (sie liegt unter
+`/app`, [Entscheidung D2](../docs/DECISIONS.md)); standardmäßig Deutsch, Englisch über den
+DE/EN-Schalter in der Seitenleiste:
+
+- **Übersicht**: nächste UStVA-Frist, zu prüfende Belege.
+- **Belege**: Hochladen (wird im Hintergrund gelesen; der Fortschritt bleibt auf jeder Seite
+  sichtbar, ein zweiter Upload wartet, bis der erste fertig ist), Erfassung ohne Datei, Bearbeiten,
+  Löschen, EÜR-Zeile je Beleg.
+- **UStVA** und Umsatzsteuererklärung: Kennzahlen, ERiC-Prüfung, Testversand, XML-Download; Echtversand
+  nur mit `FINAMT_ALLOW_LIVE_SUBMISSION=1`.
+- **EÜR** mit der Liste „zu prüfen“; **Rechnungen** (anlegen, PDF, stornieren); **Partner**
+  (umbenennen, bestätigen, zusammenführen); **Archiv** (abgegebene Erklärungen, eigene Kopie,
+  Bescheid); **Projekte**.
+- **Stammdaten**: Bundesland-Auswahl, die die 13-stellige ELSTER-Steuernummer bildet,
+  Voranmeldungszeitraum, Kleinunternehmer-Jahre, ELSTER-Zertifikat.
+
+Serverseitig gerendert, ohne Build-Schritt (`src/finamt/ui/web/`). Die Oberfläche des Originals (ein
+kompiliertes Bundle ohne veröffentlichten Quellcode) bleibt für ein Release unter `/legacy-ui`
+erreichbar; beide lesen und schreiben dieselben Daten.
+
+## Für Mitwirkende und KI-Agenten
+
+Zuerst **[AGENTS.md](../AGENTS.md)** lesen: Befehle, feste Regeln und die Definition of Done. Dann die
+erste `ready`-Karte in [docs/TODO.md](../docs/TODO.md) nehmen. Code-Übersicht:
+[docs/BASELINE.md](../docs/BASELINE.md).
+
+```bash
+uv run pytest                          # offline: kein LLM, OCR-Modell, ERiC oder Netzwerk
+uv run ruff check src tests
+uv run ruff format --check src tests
+```
+
+## Wie Belege gelesen werden
+
+OCR (Textebene über PyMuPDF, PaddleOCR, Tesseract als Ersatz), danach vier kleine lokale LLM-Agenten:
+
+| Agent | Liest aus |
+|---|---|
+| 1 | Belegnummer, Datum, Kategorie |
+| 2 | Geschäftspartner (Name, USt-IdNr, Steuernummer, Adresse) |
+| 3 | Gesamtbetrag, USt-Satz, USt-Betrag |
+| 4 | Positionen |
+
+Modelle: `mistral:7b` (Standard) oder `qwen2.5:7b-instruct-q4_K_M`, über mlx-lm auf Apple Silicon,
+sonst über transformers. Einstellungen in `.env` (`FINAMT_AGENT_*`, `FINAMT_OCR_*`).
+
+## Lizenz und Dank
+
+AGPL-3.0, siehe [LICENSE](../LICENSE). Basiert auf finamt von Yauheniya Varabyova / Space Octahedron
+GmbH ([Original](https://github.com/spaceoctahedron/finamt)); die Änderungen dieses Forks stehen in
+[NOTICE.md](../NOTICE.md). Fremdkomponenten: PaddleOCR, Tesseract, HuggingFace transformers
+(Apache-2.0), mlx-lm (MIT). LLM-Modelle werden beim ersten Einsatz geladen und unterliegen eigenen
+Lizenzen. Die ELSTER-Bibliothek ERiC wird nicht mit diesem Projekt verteilt.
 
 ## Haftungsausschluss
 
-Diese Software wird ausschließlich zu Informations- und Automatisierungszwecken bereitgestellt.
-
-Sie stellt **keine** steuerliche, rechtliche oder buchhalterische Beratung dar.
-
-Obwohl finamt darauf ausgelegt ist, die Vorbereitung deutscher steuerrelevanter Daten (z. B. Umsatzsteuervoranmeldungen, EÜR, ELSTER-Übermittlungen) zu unterstützen, wird keine Gewähr übernommen für:
-
-- Korrektheit der extrahierten Daten
-- Vollständigkeit der Buchführungsunterlagen
-- Einhaltung der geltenden Steuergesetze und -vorschriften
-- Akzeptanz durch die Steuerbehörden
-
-Die Nutzerinnen und Nutzer sind allein dafür verantwortlich, alle Ausgaben vor der Einreichung bei einer Behörde zu überprüfen.
-
-**Bei rechtlich verbindlichen Fragen wenden Sie sich stets an eine zugelassene Steuerberaterin oder einen zugelassenen Steuerberater.**
-
-Im größtmöglichen gesetzlich zulässigen Umfang übernimmt Space Octahedron GmbH keine Haftung für:
-
-- Fehler bei der OCR- oder KI-gestützten Extraktion
-- Fehlerhafte Klassifizierungen oder Berechnungen
-- Abgelehnte oder fehlerhafte Steuererklärungen
-- Finanzielle Verluste oder Bußgelder, die durch die Nutzung dieser Software entstehen
-
-## Produktinformationen (ELSTER)
-
-- **Produktname:** Space Octahedron® finamt
-- **Hersteller:** Space Octahedron GmbH
-- **Kontakt:** info@spaceoctahedron.com
+Diese Software hilft, Umsatzsteuer- und EÜR-Daten vorzubereiten. Sie ist **keine Steuer-, Rechts-
+oder Buchhaltungsberatung**. OCR und LLM können sich irren, und Kennzahlen ändern sich jedes Jahr.
+Jede Zahl vor der Abgabe beim Finanzamt prüfen; verbindliche Auskunft gibt ein Steuerberater. Die
+Autoren haften nicht für fehlerhafte Erklärungen.

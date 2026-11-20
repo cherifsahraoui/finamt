@@ -41,7 +41,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | done (2026-11-20) | — |
 | 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | done (2026-11-20) | — |
 | 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | done (2026-11-20) | UST-2 (done) |
-| 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
+| 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | done (2026-11-20) | — |
 | 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M5](MANUAL-STEPS.md#m5-yearly-update)) |
 | 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | done (2026-11-20) | — |
 | 21 | UI-2 | UI: receipt upload, edit, review warnings | M | done (2026-11-20) | — |
@@ -527,7 +527,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### DOC-1: German README
 
-- **Status**: ready · **Size**: S · Rewrite `readme/README_de.md` to match `README.md`.
+- **Status**: done (2026-11-20) · **Size**: S · Rewrite `readme/README_de.md` to match `README.md`.
+  Result: full translation of the README of 2026-11-20; update both together from now on.
 
 ### YEAR-1: yearly form check
 
