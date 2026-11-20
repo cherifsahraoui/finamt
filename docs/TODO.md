@@ -60,6 +60,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 34 | UI-9 | Uploads as a background job; progress on every page; one at a time | S | done (2026-11-20) | owner bug report |
 | 35 | UI-10 | Language switch DE/EN for `/app` | M | done (2026-11-20) | owner request |
 | 36 | INV-2 | Verify the § 19 invoice note (§ 34a UStDV) and the invoice VAT rounding source | S | ready | — |
+| 37 | PRINT-1 | Official print PDF (ERiC) for UStVA, annual USt and EÜR, kept in the archive | M | ready | — |
+| 38 | EUR-9 | EÜR: ERiC check, XML download and test send from the web UI and CLI | M | ready | — |
 
 ---
 
@@ -275,6 +277,54 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   `generate_eur(..., kleinunternehmer=Y in jahre)`; the UStVA page shows a note that no UStVA is
   due for such a year (§ 19 Abs. 1 UStG; check the exact rule in tax-rules.md first).
 - **Tests**: a year flagged → EÜR page shows Kz 111 and no Kz 140/185; unflagged → unchanged.
+
+### PRINT-1: official print PDF for UStVA, annual USt and EÜR
+
+- **Status**: ready · **Size**: M
+- **Goal**: a human-readable copy of every return in the official ELSTER layout, without any
+  template file in the repo: ERiC renders it. Today the archive (`/app/archiv`) keeps only the
+  sent XML.
+- **Found**: `tax/eric_wrapper.py` already defines `ERIC_DRUCKE` (bit 5) and
+  `_eric_druck_parameter_t` (`version`, `vorschau`, `duplexDruck`, `pdfName`, `fussText`,
+  `pdfCallback`), but every call passes `None` as print parameter.
+- **Verify first (D10)**: in `private/ERiC-44.3.6.0/Dokumentation/` (developer handbook) check
+  how `EricBearbeiteVorgang` prints: which `version` of the print parameters ERiC 44 expects,
+  whether printing works together with validate-only and with send, what `vorschau` changes
+  (watermark "Vorschau" for unsent / test cases?), and whether the PDF comes through `pdfName` or
+  the callback. Record the answers in tax-rules.md (new section "ERiC printing"). Don't guess.
+- **Steps**:
+  1. `eric_wrapper.bearbeite_vorgang(..., druck_pdf: Path | None = None)`: when set, add
+     `ERIC_DRUCKE` and fill the print parameters as the handbook says.
+  2. UStVA and annual USt (`ElsterEricClient.submit_ustva` / `submit_ust` / `validate_ust`):
+     optional `pdf_path`; on a successful binding send, store the PDF in `submitted_returns/`
+     next to the XML and record `pdf_filename` in the submission (same metadata as today).
+  3. EÜR (`eur_elster.eric_validate` / `submit`): same option.
+  4. Web UI: a "Druckansicht (PDF)" button next to "XML herunterladen" on `/app/ustva` (preview,
+     nothing sent); the archive lists `pdf_filename`. EÜR comes with EUR-9.
+  5. CLI: `--pdf F` on the commands that call ERiC.
+- **Tests** (offline, fake ERiC as in `tests/unit/test_eric_wrapper.py`): the flag and the print
+  parameters are passed only when asked; the PDF path is stored in the submission record; a
+  failed send stores no PDF. A real-ERiC test skips without `ERIC_LIBRARY_PATH`.
+- **Done when**: tests pass; tax-rules "ERiC printing" rows verified; README feature table.
+
+### EUR-9: EÜR check, XML download and test send from the web UI and CLI
+
+- **Status**: ready · **Size**: M
+- **Goal**: the Anlage EÜR XML builder (EUR-4) is only reachable from Python
+  (`finamt.tax.eur_elster`). Give it the same buttons the UStVA has.
+- **Steps**:
+  1. `/app/euer`: "Mit ERiC prüfen", "XML herunterladen", "Testfall senden" (Testmerker). Take the
+     taxpayer data from Stammdaten (`helpers.steuernummer_fuer(tp, "euer")`), the Hersteller-ID
+     and certificate as the UStVA page does; Entnahmen / Einlagen (Zeilen 106/107) as two input
+     fields, because ERiC requires them (tax-rules.md, EUR-4 section).
+  2. Show `build_xml`'s refusals as messages (open ZU PRÜFEN lines, AfA / EUR-3, Kz 151 / EUR-7,
+     Kz 234 above 2 050 €) instead of an error page.
+  3. CLI: `finamt eur --year Y --xml F` and `--validate` (ERiC, nothing sent).
+  4. Live sending stays disabled for the EÜR (D3, `eur_elster` raises); no live button.
+- **Tests**: TestClient with a fake ERiC: check, XML download, test send call `eur_elster` with
+  the Stammdaten values; refusals are shown; no live button even with the live flag set
+  (patched check, never the env var).
+- **Depends**: nothing to build; a real test send still needs the owner (EUR-6, M1–M2).
 
 ### INV-2: verify the open invoice rules
 
