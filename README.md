@@ -24,7 +24,7 @@ leave it, except for the ELSTER submission itself.
 | UStVA calculation (monthly) | ✅ in the web UI / API | CLI flag planned (CLI-1) |
 | UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ validates in ERiC 44.3; test mode; live needs an explicit switch ([M2](docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](docs/MANUAL-STEPS.md#m4-file-for-real)) | web UI (`finamt serve`) or API |
 | EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works (VAT lines still missing, EUR-2) | Python API, see below |
-| EÜR submission via ELSTER | ⛔ not yet (EUR-4; schema facts are in [tax-rules.md](docs/tax-rules.md)) | — |
+| EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs the VAT lines (EUR-2) for real data and one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
 | Credit notes, 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-2 … UST-4) | — |
 | Writing invoices (§ 14 UStG) | ⛔ not yet (INV-1) | — |
 | Zusammenfassende Meldung for EU clients | ⛔ not yet (ZM-1) | — |
@@ -45,7 +45,7 @@ The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The
 5. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
 6. **INV-1**: outgoing invoices with gapless numbering
 7. **ZM-1**: Zusammenfassende Meldung
-8. **EUR-4**: EÜR submission via ELSTER (needs the ERiC EÜR schema from the developer portal)
+8. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
 
 Decisions that shape the project (CLI first, no live filing by default, …) are in
 [docs/DECISIONS.md](docs/DECISIONS.md).

@@ -70,6 +70,15 @@ Branch `baseline/fable-1`:
   `submit(xml, mode="dry_run"|"test")`. Test mode requires the Testmerker in the XML and reads
   the ERiC directory from `ERIC_LIBRARY_PATH` only. `mode="live"` raises `NotImplementedError`.
 
+### EÜR ELSTER XML (task EUR-4, 2026-11-20)
+- `src/finamt/tax/eur_elster.py`: `build_xml(report, taxpayer, *, entnahmen, einlagen,
+  hersteller_id, test=True)` builds the Anlage EÜR 2025 envelope (datenartVersion `EUER_2025`)
+  instead of raising; new `EURTaxpayer`, `format_amount` and `eric_validate` (ERiC validation, no
+  sending). Only test builds (Testmerker); `test=False` raises. `submit()` now defaults
+  `datenart_version` to `EUER_2025`.
+- `scripts/eur_test_submission.py` (new): validates, or sends as a test case, a fixed EÜR with
+  ERiC; refuses any tax number outside the test Finanzamt 9198.
+
 ### EÜR Kennzahlen (task EUR-1)
 - `src/finamt/tax/eur.py`: the upstream category → Kennzahl mapping did not match the official
   Anlage EÜR (e.g. 111 is the Kleinunternehmer line, 140 is collected VAT, 145 is Kfz taxes,

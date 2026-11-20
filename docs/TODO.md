@@ -35,7 +35,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
-| 13 | EUR-4 | EÜR ELSTER XML builder | L | ready | — (schema facts in tax-rules.md since 2026-11-20) |
+| 13 | EUR-4 | EÜR ELSTER XML builder | L | done (2026-11-20) | — |
 | 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | ERiC validation done; test send needs owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | ready | — |
 | 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | ready | — |
@@ -50,6 +50,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | S | waiting | UI-2 … UI-4, owner OK |
 | 26 | ERIC-1 | ERiC 44 API: `EricBearbeiteVorgang` without transfer handle | S | done (2026-11-20) | — |
 | 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | ready | — |
+| 28 | EUR-6 | EÜR test submission with the owner's Hersteller-ID | S | blocked | owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
+| 29 | EUR-7 | EÜR XML: Kz 151 needs the Zeile 42 split (Kz 153) | S | ready | owner input on the split |
 
 ---
 
@@ -172,6 +174,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   → Kz 111 = 1000, expenses 119, gewinn 881. Update existing gewinn assertions that assumed the net method.
 - **Done when**: tests pass; tax-rules row "VAT is income/expense" → `verified`; NOTICE.md;
   README status table.
+- **Note (2026-11-20)**: until this is done, `eur_elster.build_xml` refuses any report with
+  Kz 112 but no Kz 140 (ERiC rule 600240), i.e. every report of a Regelbesteuerer with sales.
 
 ### EUR-3: assets above 800 € (AfA / Sammelposten)
 
@@ -184,21 +188,47 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   (purchase date, cost, useful life) and post the yearly AfA to Kz 130, or optionally a
   Sammelposten (Kz 137, § 6 Abs. 2a).
 - **Files**: new `src/finamt/tax/assets.py`, `eur.py`, storage table, tests.
+- **EÜR XML** (`eur_elster.build_xml`) refuses Kz 130/131/132/136/137 until this card is done; AfA
+  lines then also need Anlage AVEÜR. Found 2026-11-20: Kz 132 (GWG) alone passes ERiC without
+  AVEÜR, so GWG could be unblocked separately if the owner wants (tax-rules.md).
 
 ### EUR-4: EÜR ELSTER XML builder
 
-- **Status**: ready · **Size**: L
-- **Facts**: tax-rules.md → "Anlage EÜR 2025 XML" (datenartVersion `EUER_2025`, namespace, root
-  `E77`, element per Kennzahl, decimal comma, AVEÜR rule). The XSD, example and ERiC itself are in
-  the git-ignored `private/ERiC-44.3.6.0/` on the owner's machine. Read them there, never copy them.
-  An ERiC validation test must `skip` when `ERIC_LIBRARY_PATH` is not set (tests run offline).
-- **Goal**: implement `finamt.tax.eur_elster.build_xml(report)` for the Anlage EÜR.
-- **Files**: `src/finamt/tax/eur_elster.py`, `tests/unit/test_eur_elster.py`, `docs/tax-rules.md`.
-- **Steps**: map `EURReport.kz_totals()` (plus the EUR-2 lines and Kz 159 / 199 totals) to the XSD
-  elements; reuse the envelope pattern of `ElsterXMLBuilder.build_ustva`; Testmerker in test builds.
-  Refuse to build if `review_lines` is not empty or `year != FORM_YEAR`.
-- **Tests**: golden XML for a fixed report; `validate()` passes; refusal cases; keep the live-mode test.
-- **Done when**: plus one manual `submit(mode="test")` by the owner, recorded in tax-rules.md.
+- **Status**: done (2026-11-20) · **Size**: L
+- **Result**: `eur_elster.build_xml(report, taxpayer, entnahmen=, einlagen=, hersteller_id=)` builds
+  the Anlage EÜR 2025 envelope (test builds only, Testmerker). Kz 159 / 199 and the profit lines
+  (Zeilen 76, 77, 92, 95, 97) are computed; Entnahmen / Einlagen (Zeilen 106/107) are arguments
+  because ERiC requires them for sole proprietors. `eric_validate(xml)` runs ERiC without sending.
+  Facts and ERiC rule numbers: tax-rules.md → "Anlage EÜR 2025: lines and rules used by …".
+- **Refuses** (so nothing invalid or guessed is built): open `review_lines`; `year != FORM_YEAR`;
+  Kz 112 without Kz 140 (until EUR-2); AfA / GWG Kz 130/131/132/136/137 (EUR-3); Kz 151 (EUR-7);
+  Kz 234 above 2 050 € (needs Anlage SZ); `test=False` (live disabled, D3).
+- **Checked**: XSD and ERiC 44.3 validation (nothing sent) for the golden report and four other
+  reports, with a placeholder Hersteller-ID. Tests: `tests/unit/test_eur_elster.py` (golden XML,
+  refusals; `TestRealEric` skips without `ERIC_LIBRARY_PATH` and `FINAMT_ELSTER_HERSTELLER_ID`).
+- **Follow-ups**: EUR-6 (owner's server test), EUR-7 (Kz 151 / Zeile 42).
+
+### EUR-6: EÜR test submission (owner)
+
+- **Status**: blocked on the owner · **Size**: S
+- **Owner steps**: [MANUAL-STEPS.md M1–M2](MANUAL-STEPS.md#m2-first-test-submission), steps 3–4
+  (`scripts/eur_test_submission.py`, then `--send`). Needs the owner's Hersteller-ID and certificate.
+- **Done when**: the server result (success, telenummer or error) is recorded in tax-rules.md row
+  "server acceptance" of the Anlage EÜR 2025 section.
+
+### EUR-7: Kz 151 needs the Zeile 42 split (Kz 153)
+
+- **Status**: ready · **Size**: S
+- **Goal**: ERiC rule 600522 requires Zeile 41 (Kz 151, sonstige Grundstücksaufwendungen) and
+  Zeile 42 (Kz 153, "in Zeile 41 enthaltene Erhaltungsaufwendungen") together. `eur.py` maps
+  utilities, cleaning, security and property insurance to Kz 151, so `build_xml` refuses such reports.
+- **Verified rules**: tax-rules.md rows "Kz 153 (Zeile 42)".
+- **Steps**: decide with the owner how to know the maintenance share (a receipt subcategory such as
+  `maintenance`, or a report field); add Kz 153
+  (`BAus/Raumkosten_u_sonst/Davon_Erhalt_Grundstueck/Sum/E6004015`) to `_BAUS_FIELDS` right after
+  Kz 151 (XSD order). It is a "davon" line: keep it out of the Kz 199 total (not in rule 600614).
+  Send it whenever Kz 151 is sent (0 only when the owner confirms there is none). Don't guess the split.
+- **Tests**: Kz 151 with Kz 153 builds and validates; Kz 151 without a Kz 153 decision still refuses.
 
 ### EUR-5: 10-day rule for recurring payments
 

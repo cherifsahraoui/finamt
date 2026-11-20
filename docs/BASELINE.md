@@ -20,15 +20,16 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `tax/eur.py` | `generate_eur()` → `EURReport`: EÜR lines per Anlage EÜR 2025 Kennzahl (`KZ_LABELS`, `_PURCHASE_KZ`, `_PURCHASE_SUB_KZ`); ambiguous receipts in `review_lines`, excluded from the profit. |
 | `tax/elster.py` | ELSTER XML for UStVA and annual USt (E50), Kz mapping `_ustva_kennzahlen`, signer, HTTP client, ERiC client. |
 | `tax/eric_wrapper.py` | ctypes bridge to the ERiC shared library (`EricSession`, `EricBuffer`, `EricCertificate`). Targets the ERiC 44 API (no transfer handle). |
-| `tax/eur_elster.py` | EÜR ELSTER boundary: `build_xml` (stub), `validate`, `submit` (dry_run/test only). |
+| `tax/eur_elster.py` | EÜR ELSTER boundary: `build_xml` (Anlage EÜR 2025 envelope, test builds only; field table `_BEIN_FIELDS` / `_BAUS_FIELDS` in XSD order, `EURTaxpayer` for the form header), `eric_validate` (ERiC, nothing sent), `validate` (offline), `submit` (dry_run/test only). |
 | `tax/safety.py` | Live-submission gate (`FINAMT_ALLOW_LIVE_SUBMISSION`). |
 | `ui/api.py` | FastAPI backend for the web UI. |
 | `ui/server.py` | Uvicorn launcher (`finamt serve`). |
 | `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2; covers receipts + UStVA/USt, no EÜR. A new UI goes to `ui/web/` (tasks UI-1 … UI-6). |
 | `utils.py`, `progress.py`, `exceptions.py` | Parsing helpers, SSE progress events, exception types. |
 
-Outside the package: `scripts/ustva_test_submission.py` runs a fixed UStVA test case through ERiC
-(validate, or `--send` with Testmerker to the test Finanzamt; owner step M2). `private/`
+Outside the package: `scripts/ustva_test_submission.py` and `scripts/eur_test_submission.py` run a
+fixed UStVA / Anlage EÜR test case through ERiC (validate, or `--send` with Testmerker to the test
+Finanzamt; owner step M2). `private/`
 (git-ignored) holds the owner's ERiC, its documentation and the certificate. `legacy/` holds the removed KSt / E-Bilanz / Jahresabschluss code
 (not packaged, not tested, not linted). `examples/`, `notebooks/`, `docs/` (Sphinx).
 
@@ -84,8 +85,9 @@ EÜR is not exposed by the API; the bundled UI computes its EÜR view client-sid
    → `ElsterEricClient.validate_ust()/submit_ust()` (ERiC) (`ElsterClient`, direct HTTP, is not used by CLI/API).
 8. **Annual USt**: same report over the year, `period=0` → `_build_ust_annual_e50()`.
 9. **EÜR**: `repo.find_by_period(Jan 1, Dec 31)` → `generate_eur()` → `EURReport`
-   (category/subcategory → Kennzahl, or `review_lines`) → `eur_elster.build_xml()`
-   (**not implemented**: needs the ERiC EÜR schema, task EUR-4).
+   (category/subcategory → Kennzahl, or `review_lines`) → `eur_elster.build_xml(report, taxpayer,
+   entnahmen=, einlagen=, hersteller_id=)` (refuses open review lines, AfA, Kz 151, Kz 112 without
+   Kz 140) → `eur_elster.eric_validate()` / `submit(mode="test")`. Live is disabled.
 
 Money is `Decimal` throughout `tax/` (see `tests/unit/test_decimal_rule.py`).
 `ReceiptData.to_dict()` emits floats for JSON only; do not feed that back into tax code.
