@@ -24,7 +24,6 @@ from finamt.tax.elster import (
     ELSTER_URL_PRODUCTION,
     ELSTER_URL_TEST,
     TESTMERKER,
-    EBilanzEnvelopeBuilder,
     ElsterConfig,
     ElsterEricClient,
     ElsterXMLBuilder,
@@ -453,64 +452,6 @@ class TestElsterXMLBuilder:
 
 
 # ---------------------------------------------------------------------------
-# EBilanzEnvelopeBuilder (requires lxml)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(not _LXML, reason="lxml not installed")
-class TestEBilanzEnvelopeBuilder:
-    def _xbrl(self) -> bytes:
-        """Minimal well-formed XBRL stub."""
-        return b"""<?xml version="1.0"?>
-<xbrl xmlns="http://www.xbrl.org/2003/instance">
-  <context id="D-2024"><entity><identifier scheme="x">21815</identifier></entity>
-  <period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
-</xbrl>"""
-
-    def test_returns_bytes(self):
-        env = EBilanzEnvelopeBuilder(_cfg())
-        xml = env.build(self._xbrl(), year=YEAR)
-        assert isinstance(xml, bytes)
-
-    def test_verfahren_is_elster_bilanz(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR)
-        assert b"ElsterBilanz" in xml
-
-    def test_datenart_is_bilanz(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR)
-        assert b"Bilanz" in xml
-
-    def test_testmerker_in_test_mode(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR, use_test=True)
-        assert TESTMERKER.encode() in xml
-
-    def test_testmerker_absent_live(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR, use_test=False)
-        assert TESTMERKER.encode() not in xml
-
-    def test_xbrl_embedded_in_nutzdaten(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR)
-        root = ET.fromstring(xml)
-        nutzdaten = root.findall(".//{*}Nutzdaten")
-        assert len(nutzdaten) > 0
-
-    def test_invalid_xbrl_raises_value_error(self):
-        env = EBilanzEnvelopeBuilder(_cfg())
-        with pytest.raises(ValueError, match="XBRL"):
-            env.build(b"<not valid xml<<<", year=YEAR)
-
-    def test_datenart_version_constant(self):
-        assert EBilanzEnvelopeBuilder.DATENART_VERSION == "Bilanz_6_9"
-
-    def test_import_error_without_lxml(self, monkeypatch):
-        import finamt.tax.elster as elster_mod
-
-        monkeypatch.setattr(elster_mod, "_LXML_AVAILABLE", False)
-        with pytest.raises(ImportError, match="lxml"):
-            EBilanzEnvelopeBuilder(_cfg())
-
-
-# ---------------------------------------------------------------------------
 # ElsterClient._parse_response (pure static, no network)
 # ---------------------------------------------------------------------------
 
@@ -605,7 +546,8 @@ class TestElsterEricClientInit:
 
     def test_eric_load_error_returns_failure(self, tmp_path):
         client = ElsterEricClient(_cfg(), eric_home=str(tmp_path), log_dir=str(tmp_path))
-        result = client.validate_ebilanz(b"<xbrl/>", year=YEAR)
+        report = USTVAReport(period_start=date(YEAR, 1, 1), period_end=date(YEAR, 3, 31))
+        result = client.validate_ust(report, year=YEAR, period=41)
         # Should fail gracefully — library doesn't exist
         assert result.success is False
         assert result.error_code in ("ERIC_LOAD_ERROR", "XML_BUILD_ERROR", "ERIC_ERROR")
