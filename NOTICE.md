@@ -234,3 +234,9 @@ Branch `baseline/fable-1`:
 - `src/finamt/agents/llm_caller.py` (upstream file): log the final model-load/inference exception
   instead of silently turning it into an empty extraction result.
 - `README.md`: document CUDA 12.6 PyTorch and bitsandbytes setup for Windows Pascal GPUs.
+
+### Asset register and AfA (EUR-3, 2026-11-20)
+- `src/finamt/tax/assets.py` (new): `Asset`, `afa_for_year`, `restwert`; methods `linear` and
+  `computer_one_year` (BMF letter 22.02.2022).
+- `src/finamt/tax/eur.py` (upstream file): `generate_eur(..., assets=)` posts AfA to Kz 130 / 131;
+  review reason for assets over 800 € reworded.

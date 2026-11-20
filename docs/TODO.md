@@ -33,7 +33,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | done (2026-11-20) | UST-2 (done) |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | done (2026-11-20) | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | done (2026-11-20) | UST-4 (done) |
-| 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
+| 10 | EUR-3 | Assets above 800 €: asset register and AfA (A + C, D11) | M | done (2026-11-20) | — |
+| 10b | EUR-3b | Assets: stored register, CLI/UI entry, Anlage AVEÜR XML | L | blocked | AVEÜR schema facts from the ERiC docs on the owner machine (D10) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | blocked | source for the 10-day window (tax-rules.md "cash basis") |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | done (2026-11-20) | — |
 | 13 | EUR-4 | EÜR ELSTER XML builder | L | done (2026-11-20) | — |
@@ -208,20 +209,33 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 - **Done when**: tests pass; tax-rules row "VAT is income/expense" → `verified`; NOTICE.md;
   README status table.
 
-### EUR-3: assets above 800 € (AfA / Sammelposten)
+### EUR-3: assets above 800 € (asset register and AfA)
 
-- **Status**: blocked · **Size**: M
-- **Owner steps**: [MANUAL-STEPS.md M3](MANUAL-STEPS.md#m3-decide-asset-depreciation).
-- **Owner action**: confirm the depreciation approach (straight-line over the useful life from the
-  official AfA tables, or the 1-year rule for computer hardware/software per BMF guidance). An agent
-  may then fetch and verify the sources (§ 7 EStG, BMF AfA tables) and add rows to tax-rules.md.
-- **Goal**: equipment over 800 € net currently goes to review. Build a small asset register
-  (purchase date, cost, useful life) and post the yearly AfA to Kz 130, or optionally a
-  Sammelposten (Kz 137, § 6 Abs. 2a).
-- **Files**: new `src/finamt/tax/assets.py`, `eur.py`, storage table, tests.
-- **EÜR XML** (`eur_elster.build_xml`) refuses Kz 130/131/132/136/137 until this card is done; AfA
-  lines then also need Anlage AVEÜR. Found 2026-11-20: Kz 132 (GWG) alone passes ERiC without
-  AVEÜR, so GWG could be unblocked separately if the owner wants (tax-rules.md).
+- **Status**: done (2026-11-20) · **Size**: M · **Decision**: D11 (A + C, no Sammelposten)
+- **Result**: `src/finamt/tax/assets.py`: `Asset` (cost, acquisition date, method, useful life,
+  intangible flag, `receipt_id`), `afa_for_year`, `restwert`. Methods: `linear` (useful life from
+  the owner, monthly pro rata, § 7 Abs. 1 S. 4 EStG) and `computer_one_year` (BMF 22.02.2022,
+  full cost in the acquisition year, Rz. 1.4). `generate_eur(..., assets=[...])` posts the AfA
+  to Kz 130 (tangible) / 131 (intangible), also for assets bought in earlier years. A receipt
+  linked by `receipt_id` is not an expense itself; its Vorsteuer still goes to Kz 185 in the
+  receipt year. Without a register entry an equipment receipt over 800 € stays in review.
+  Tests: `tests/unit/test_assets.py`.
+- **Not done**: Sammelposten / Kz 137; disposals and Kz 102 with Restwert; purchased software over
+  800 € (category `software` still goes to Kz 228); no useful-life table (owner enters it).
+  Storage, entry UI and the XML go to EUR-3b.
+
+### EUR-3b: stored asset register, entry and Anlage AVEÜR
+
+- **Status**: blocked · **Size**: L
+- **Blocked on**: the AVEÜR element names, formats and ERiC rules (606840, 606846, 606847,
+  607901, 607902) come from the ERiC documentation in `private/` on the owner machine (D10);
+  they are not available to a cloud agent. Do not guess them.
+- **Goal**: (1) SQLite table `assets` + migration, `repo.add_asset / list_assets`, test in
+  `tests/integration/test_storage.py`; (2) entry: CLI command and a small route near `/tax/eur`;
+  pass the register to `generate_eur`; (3) `eur_elster.build_xml`: build `AVEUER` from the
+  register and drop the AfA refusal for Kz 130 / 131; ERiC-validate with the golden report;
+  (4) optionally unblock Kz 132 (GWG) alone, which already validates (tax-rules.md).
+- **Done when**: XML with AfA validates in ERiC 44.3 and the tests pass.
 
 ### EUR-4: EÜR ELSTER XML builder
 

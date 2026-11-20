@@ -11,7 +11,7 @@ generated XML are git-ignored.
 |---|---|---|---|---|
 | M1 | [Put your Hersteller-ID and certificate PIN into `.env`](#m1-hersteller-id-and-certificate-pin) | when available (**pending**, see below) | M2; ERiC validation of real data; all sending. Not needed for coding or tests | 5 min (+ waiting for the Hersteller-ID) |
 | M2 | [First test submission](#m2-first-test-submission) (UStVA and EÜR) | once | UST-5, EUR-6 | 10 min |
-| M3 | [Decide how assets above 800 € are depreciated](#m3-decide-asset-depreciation) | once | EUR-3 | 10 min |
+| M3 | [Asset depreciation](#m3-decide-asset-depreciation): **decided (D11, 2026-11-20)** | done | EUR-3 | — |
 | M4 | [File for real (live)](#m4-file-for-real) | every period | — | 10 min per filing |
 | M5 | [Yearly update: new ERiC and forms](#m5-yearly-update) | yearly | YEAR-1 | 10 min |
 | M6 | [Optional: ask upstream for the web UI source](#m6-optional-ask-upstream-for-the-ui-source) | optional | UI decision | 5 min |
@@ -115,18 +115,18 @@ uv run --env-file .env python scripts/eur_test_submission.py --send   # 4. test 
 
 ## M3: Decide asset depreciation
 
-Equipment above 800 € net currently goes to "ZU PRÜFEN" and is not counted. Tell the agent which
-option to build (EUR-3):
+**Decided (D11, 2026-11-20): A plus C, no Sammelposten.** Nothing to do now. When you add an asset
+to the register you give two things per asset:
 
-- **A. Write off over the useful life (AfA)**, straight-line per the official AfA tables. Standard
-  and always correct.
-- **B. Sammelposten** (pool) for assets over 250 € and up to 1 000 € net, written off over 5 years
-  (§ 6 Abs. 2a EStG, verified).
-- **C. One-year write-off for computer hardware and software**, per BMF guidance (the agent must
-  verify the current BMF letter before building it).
+- **Computer hardware or software** (BMF letter 22.02.2022, Rz. 2–5: computers, notebooks,
+  docking stations, peripherals such as monitor, keyboard, printer; operating and application
+  software): choose `computer_one_year`. The full cost is written off in the purchase year.
+  This is optional per asset, and it is an AfA (Kz 130 / 131), not a GWG.
+- **Everything else**: choose `linear` and enter the **useful life in years from the official
+  AfA table** (the agent does not guess table values). Monthly pro rata from the purchase month.
 
-Say for example "M3: use C for computers, A for everything else". The agent verifies the sources
-and builds it. With any AfA, the EÜR must also send Anlage AVEÜR (ERiC enforces it).
+Still open for you later: Sammelposten (§ 6 Abs. 2a EStG) was left out; ask if you want it.
+Sending the EÜR with AfA also needs Anlage AVEÜR (task EUR-3b).
 
 ## M4: File for real
 

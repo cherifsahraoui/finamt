@@ -120,7 +120,8 @@ uv run finamt --help                      # CLI
 ## Known gaps (details in `docs/TODO.md`)
 
 - EÜR ELSTER XML (Kennzahlen not verified), EÜR CLI/API.
-- EÜR: assets > 800 € go to review (EUR-3).
+- EÜR: assets > 800 € go to review unless they are in the register passed to `generate_eur(assets=)`
+  (`tax/assets.py`, EUR-3). No stored register, no Anlage AVEÜR XML yet (EUR-3b).
 - Receipts without German VAT are reported only with a `vat_treatment` (UST-3/4); otherwise a
   report warning. The annual USt (E50) refuses 0 % / tax-free / reverse-charge amounts.
 - `vat_splits` are used by the UStVA for receipts without a single rate (CLN-3).
