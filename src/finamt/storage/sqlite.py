@@ -176,6 +176,26 @@ class SQLiteRepository:
                 updated_at TEXT NOT NULL
             );
         """)
+        # Outgoing invoices (INV-1): gapless numbers per year, one row per issued invoice.
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS invoice_sequence (
+                year        INTEGER PRIMARY KEY,
+                last_number INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS invoices (
+                number      TEXT PRIMARY KEY,
+                year        INTEGER NOT NULL,
+                seq         INTEGER NOT NULL,
+                issue_date  TEXT NOT NULL,
+                customer    TEXT,
+                gross_total TEXT,
+                corrects    TEXT,
+                receipt_id  TEXT,
+                data        TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                UNIQUE (year, seq)
+            );
+        """)
         self._conn.commit()
 
     def _create_tables(self) -> None:
@@ -277,6 +297,90 @@ class SQLiteRepository:
         with self._lock:
             self._conn.executemany(sql, rows)
             self._conn.commit()
+
+    # ------------------------------------------------------------------
+    # Outgoing invoices (INV-1)
+    # ------------------------------------------------------------------
+
+    def create_invoice(self, year: int, build) -> dict:
+        """
+        Allocate the next number of ``year`` and store the invoice in **one** transaction,
+        so a number is never lost or used twice, even with several processes.
+
+        ``build(seq)`` returns the invoice data dict (it must contain ``number``,
+        ``issue_date``, ``customer``, ``gross_total``, ``corrects``) for sequence ``seq``.
+        Nothing is stored if it raises.
+        """
+        import json as _json
+        from datetime import datetime as _dt
+
+        with self._lock:
+            conn = self._conn
+            conn.execute("BEGIN IMMEDIATE")  # take the write lock before reading the counter
+            try:
+                row = conn.execute(
+                    "SELECT last_number FROM invoice_sequence WHERE year = ?", (year,)
+                ).fetchone()
+                seq = (row[0] if row else 0) + 1
+                data = build(seq)
+                conn.execute(
+                    "INSERT INTO invoice_sequence (year, last_number) VALUES (?, ?) "
+                    "ON CONFLICT(year) DO UPDATE SET last_number = excluded.last_number",
+                    (year, seq),
+                )
+                conn.execute(
+                    """INSERT INTO invoices (number, year, seq, issue_date, customer,
+                           gross_total, corrects, receipt_id, data, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)""",
+                    (
+                        data["number"],
+                        year,
+                        seq,
+                        data["issue_date"],
+                        data.get("customer", {}).get("name"),
+                        data.get("gross_total"),
+                        data.get("corrects"),
+                        _json.dumps(data, ensure_ascii=False),
+                        _dt.now().isoformat(timespec="seconds"),
+                    ),
+                )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+        return data
+
+    def set_invoice_receipt(self, number: str, receipt_id: str) -> None:
+        self._exec("UPDATE invoices SET receipt_id = ? WHERE number = ?", (receipt_id, number))
+
+    def _invoice_row(self, r) -> dict:
+        import json as _json
+
+        d = _json.loads(r["data"])
+        d["receipt_id"] = r["receipt_id"]
+        d["created_at"] = r["created_at"]
+        return d
+
+    def get_invoice(self, number: str) -> dict | None:
+        r = self._conn.execute("SELECT * FROM invoices WHERE number = ?", (number,)).fetchone()
+        return self._invoice_row(r) if r else None
+
+    def list_invoices(self, year: int | None = None) -> list[dict]:
+        """Newest first. Each dict is the stored invoice data plus ``receipt_id``."""
+        if year is None:
+            rows = self._conn.execute("SELECT * FROM invoices ORDER BY year DESC, seq DESC")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM invoices WHERE year = ? ORDER BY seq DESC", (year,)
+            )
+        return [self._invoice_row(r) for r in rows.fetchall()]
+
+    def invoice_corrected_by(self, number: str) -> str | None:
+        """Number of the correction that cancels ``number``, if any."""
+        r = self._conn.execute(
+            "SELECT number FROM invoices WHERE corrects = ? ORDER BY seq LIMIT 1", (number,)
+        ).fetchone()
+        return r["number"] if r else None
 
     @staticmethod
     def _now() -> str:

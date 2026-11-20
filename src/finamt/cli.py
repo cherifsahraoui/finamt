@@ -651,6 +651,88 @@ def cmd_eur(
 
 
 # ---------------------------------------------------------------------------
+# invoice sub-commands (INV-1)
+# ---------------------------------------------------------------------------
+
+invoice_app = typer.Typer(help="Outgoing invoices (§ 14 UStG) with gapless numbers.")
+app.add_typer(invoice_app, name="invoice")
+
+
+def _pdf_dir_for(db_path: Path) -> Path:
+    from finamt.storage.project import layout_from_db_path
+
+    try:
+        return layout_from_db_path(db_path).pdfs_dir
+    except Exception:  # noqa: BLE001 — a DB outside a project folder
+        return db_path.parent / "pdfs"
+
+
+@invoice_app.command("new")
+def cmd_invoice_new(
+    file: Annotated[
+        Path,
+        typer.Option(
+            "--file",
+            help="JSON: customer, issue_date, supply_date or supply_period, lines, notes. "
+            "The supplier comes from the project's Stammdaten unless given.",
+        ),
+    ],
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """Issue an invoice: next number, PDF, and a stored sale receipt."""
+    from finamt.invoicing import Invoice, issue_invoice, supplier_from_taxpayer
+
+    db_path = db or DEFAULT_DB_PATH
+    data = json.loads(file.read_text(encoding="utf-8"))
+    with get_repository(db_path) as repo:
+        if not data.get("supplier"):
+            data["supplier"] = vars(supplier_from_taxpayer(repo.get_metadata("taxpayer") or {}))
+        data.setdefault("issue_date", date.today().isoformat())
+        try:
+            inv = Invoice.from_dict(data)
+            res = issue_invoice(repo, inv, _pdf_dir_for(Path(db_path)))
+        except ValueError as exc:
+            print(f"✗  {exc}", file=sys.stderr)
+            raise typer.Exit(code=1) from exc
+    print(f"✓  {inv.title} {inv.number}: {inv.gross_total:.2f} EUR → {res.pdf_path}")
+
+
+@invoice_app.command("list")
+def cmd_invoice_list(
+    year: Annotated[int | None, YearOpt] = None,
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """List issued invoices, newest first."""
+    with get_repository(db or DEFAULT_DB_PATH) as repo:
+        rows = repo.list_invoices(year)
+    if not rows:
+        print("Keine Rechnungen.")
+        return
+    for r in rows:
+        corr = f"  (storniert {r['corrects']})" if r.get("corrects") else ""
+        kunde = (r.get("customer") or {}).get("name") or "—"
+        print(f"{r['number']}  {r['issue_date']}  {kunde:<30} {r['gross_total']:>12} EUR{corr}")
+
+
+@invoice_app.command("cancel")
+def cmd_invoice_cancel(
+    number: Annotated[str, typer.Argument(help="Invoice number, e.g. 2025-0001.")],
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """Cancel an invoice with a Rechnungskorrektur (Storno) under its own number."""
+    from finamt.invoicing import cancel_invoice
+
+    db_path = db or DEFAULT_DB_PATH
+    with get_repository(db_path) as repo:
+        try:
+            res = cancel_invoice(repo, number, _pdf_dir_for(Path(db_path)))
+        except ValueError as exc:
+            print(f"✗  {exc}", file=sys.stderr)
+            raise typer.Exit(code=1) from exc
+    print(f"✓  {res.invoice.title} {res.invoice.number} storniert {number} → {res.pdf_path}")
+
+
+# ---------------------------------------------------------------------------
 # serve sub-command
 # ---------------------------------------------------------------------------
 

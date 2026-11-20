@@ -770,3 +770,44 @@ class TestVatSplits:
         assert len(found.vat_splits) == 2
         rates = {s["vat_rate"] for s in found.vat_splits}
         assert rates == {19.0, 7.0}
+
+
+# ---------------------------------------------------------------------------
+# Invoices (INV-1): tables are added in place to an existing database
+# ---------------------------------------------------------------------------
+
+
+class TestInvoiceTables:
+    def test_existing_db_gets_invoice_tables(self, tmp_path):
+        db = tmp_path / "old.db"
+        SQLiteRepository(db_path=db).close()
+        con = sqlite3.connect(db)
+        con.execute("DROP TABLE invoices")
+        con.execute("DROP TABLE invoice_sequence")
+        con.commit()
+        con.close()
+        with SQLiteRepository(db_path=db) as r:  # reopening runs the migration
+            data = r.create_invoice(
+                2025, lambda seq: {"number": f"2025-{seq:04d}", "issue_date": "2025-01-02"}
+            )
+            assert data["number"] == "2025-0001"
+            assert r.get_invoice("2025-0001")["issue_date"] == "2025-01-02"
+
+    def test_invoice_round_trip_and_receipt_link(self, repo):
+        repo.create_invoice(
+            2025,
+            lambda seq: {
+                "number": f"2025-{seq:04d}",
+                "issue_date": "2025-01-02",
+                "customer": {"name": "Kunde"},
+                "gross_total": "119.00",
+            },
+        )
+        repo.set_invoice_receipt("2025-0001", "abc")
+        [row] = repo.list_invoices(2025)
+        assert (row["number"], row["receipt_id"], row["gross_total"]) == (
+            "2025-0001",
+            "abc",
+            "119.00",
+        )
+        assert repo.list_invoices(2024) == []

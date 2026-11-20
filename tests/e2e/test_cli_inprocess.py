@@ -740,3 +740,76 @@ class TestCliSuggestPeriod:
         result = self._run(tmp_path, r)
         assert result.exit_code == 1
         assert "Keine Belege für 2024" in result.output
+
+
+# ---------------------------------------------------------------------------
+# INV-1: finamt invoice new / list / cancel
+# ---------------------------------------------------------------------------
+
+
+class TestCliInvoice:
+    def _setup(self, tmp_path):
+        import json
+
+        from finamt.storage.sqlite import SQLiteRepository
+
+        db = tmp_path / "inv" / "finamt.db"
+        with SQLiteRepository(db_path=db) as repo:
+            repo.set_metadata(
+                "taxpayer",
+                {
+                    "name": "Erika Muster",
+                    "street": "Teststraße 1",
+                    "postcode": "80331",
+                    "city": "München",
+                    "tax_number": "143/123/45678",
+                },
+            )
+        f = tmp_path / "rechnung.json"
+        f.write_text(
+            json.dumps(
+                {
+                    "customer": {
+                        "name": "Kunde GmbH",
+                        "street": "Hauptstraße 5",
+                        "postcode": "10115",
+                        "city": "Berlin",
+                    },
+                    "issue_date": "2025-03-31",
+                    "supply_date": "2025-03-31",
+                    "lines": [
+                        {
+                            "description": "Beratung",
+                            "quantity": "2",
+                            "unit_net": "500",
+                            "vat_rate": "19",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return db, f
+
+    def test_new_list_cancel(self, tmp_path):
+        db, f = self._setup(tmp_path)
+        result = runner.invoke(app, ["invoice", "new", "--file", str(f), "--db", str(db)])
+        assert result.exit_code == 0, result.output
+        assert "Rechnung 2025-0001: 1190.00 EUR" in result.output
+        result = runner.invoke(app, ["invoice", "list", "--db", str(db)])
+        assert "2025-0001" in result.output and "Kunde GmbH" in result.output
+        result = runner.invoke(app, ["invoice", "cancel", "2025-0001", "--db", str(db)])
+        assert result.exit_code == 0, result.output
+        assert "storniert 2025-0001" in result.output
+        assert list((db.parent / "pdfs").glob("*.pdf"))
+
+    def test_incomplete_invoice_fails(self, tmp_path):
+        import json
+
+        db, f = self._setup(tmp_path)
+        data = json.loads(f.read_text(encoding="utf-8"))
+        data["customer"] = {"name": "Nur Name"}
+        f.write_text(json.dumps(data), encoding="utf-8")
+        result = runner.invoke(app, ["invoice", "new", "--file", str(f), "--db", str(db)])
+        assert result.exit_code == 1
+        assert "Leistungsempfängers fehlen" in result.output
