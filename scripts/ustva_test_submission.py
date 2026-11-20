@@ -43,11 +43,13 @@ def main() -> int:
     if not (cfg.hersteller_id.isdigit() and len(cfg.hersteller_id) == 5):
         print("FINAMT_ELSTER_HERSTELLER_ID must be your 5-digit Hersteller-ID.", file=sys.stderr)
         return 2
-    # Sender data for the test case (as in the ERiC examples). Without it the builder
-    # falls back to "—", which ERiC rejects (see docs/TODO.md, CLN-4).
-    cfg.company_name = "Testfall FreiBuch"
-    cfg.street, cfg.house_number = "Testgasse", "1"
-    cfg.postal_code, cfg.city = "12345", "Musterstadt"
+    # Sender address: FINAMT_ELSTER_NAME / _STREET / _HOUSE_NUMBER / _PLZ / _CITY (read by
+    # ElsterConfig.from_env). Without them, use the test-case sender of the ERiC examples:
+    # the builder refuses an empty address (CLN-4).
+    if not (cfg.street and cfg.postal_code and cfg.city):
+        cfg.company_name = cfg.company_name or "Testfall FreiBuch"
+        cfg.street, cfg.house_number = "Testgasse", "1"
+        cfg.postal_code, cfg.city = "12345", "Musterstadt"
 
     start_month = 3 * (args.quarter - 1) + 1
     report = USTVAReport(

@@ -59,6 +59,11 @@ def _cfg(**kwargs) -> ElsterConfig:
         "steuernummer": "21/815/08150",
         "finanzamt_nr": "2181",
         "bundesland_kz": "21",
+        # sender address: build_ustva refuses to build without it (CLN-4)
+        "street": "Testgasse",
+        "house_number": "1",
+        "postal_code": "12345",
+        "city": "Musterstadt",
     }
     defaults.update(kwargs)
     return ElsterConfig(**defaults)
@@ -396,6 +401,32 @@ class TestElsterXMLBuilder:
     def _report(self) -> object:
         receipts = [_receipt(receipt_type="sale")]
         return generate_ustva(receipts, Q1_S, Q1_E)
+
+    @pytest.mark.parametrize("field", ["street", "postal_code", "city"])
+    def test_missing_sender_address_refused(self, field):
+        """CLN-4: no "—" / "00000" placeholders; ERiC rejects them."""
+        with pytest.raises(ValueError, match="sender address missing"):
+            ElsterXMLBuilder(_cfg(**{field: ""})).build_ustva(self._report(), YEAR, 1)
+
+    def test_sender_address_written(self):
+        xml = ElsterXMLBuilder(_cfg()).build_ustva(self._report(), YEAR, 1).decode()
+        assert "Testgasse 1</" in xml and ">12345</" in xml and ">Musterstadt</" in xml
+        assert "—" not in xml
+
+    def test_from_env_reads_address(self, monkeypatch):
+        for k, v in {
+            "FINAMT_ELSTER_CERT_PATH": "/x.pfx",
+            "FINAMT_ELSTER_CERT_PASSWORD": "p",
+            "FINAMT_ELSTER_STEUERNUMMER": "9198011310010",
+            "FINAMT_ELSTER_FINANZAMT_NR": "9198",
+            "FINAMT_ELSTER_BUNDESLAND_KZ": "BY",
+            "FINAMT_ELSTER_STREET": "Weg",
+            "FINAMT_ELSTER_PLZ": "80331",
+            "FINAMT_ELSTER_CITY": "München",
+        }.items():
+            monkeypatch.setenv(k, v)
+        cfg = ElsterConfig.from_env()
+        assert (cfg.street, cfg.postal_code, cfg.city) == ("Weg", "80331", "München")
 
     def test_returns_bytes(self):
         builder = ElsterXMLBuilder(_cfg())

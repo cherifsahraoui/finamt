@@ -284,6 +284,13 @@ class ElsterConfig:
             finanzamt_nr=os.environ["FINAMT_ELSTER_FINANZAMT_NR"],
             bundesland_kz=os.environ["FINAMT_ELSTER_BUNDESLAND_KZ"],
             hersteller_id=os.environ.get("FINAMT_ELSTER_HERSTELLER_ID", ""),
+            # Sender address (UStVA DatenLieferant, USt E50); optional here, but
+            # build_ustva refuses to build without street, PLZ and city (CLN-4).
+            company_name=os.environ.get("FINAMT_ELSTER_NAME", ""),
+            street=os.environ.get("FINAMT_ELSTER_STREET", ""),
+            house_number=os.environ.get("FINAMT_ELSTER_HOUSE_NUMBER", ""),
+            postal_code=os.environ.get("FINAMT_ELSTER_PLZ", ""),
+            city=os.environ.get("FINAMT_ELSTER_CITY", ""),
         )
 
 
@@ -690,15 +697,32 @@ class ElsterXMLBuilder:
                 _dts.date.today().isoformat().replace("-", "")
             )
             # DatenLieferant inside Anmeldungssteuern (company address, distinct from TransferHeader/DatenLieferant)
+            # No placeholders: ERiC rejects "—" (610001002, ZeichenNichtImZeichensatz), and a
+            # made-up PLZ would be wrong data. Refuse before calling ERiC instead (CLN-4).
+            missing = [
+                label
+                for label, value in (
+                    ("Straße", self.config.street),
+                    ("PLZ", self.config.postal_code),
+                    ("Ort", self.config.city),
+                )
+                if not (value or "").strip()
+            ]
+            if missing:
+                raise ValueError(
+                    "UStVA sender address missing (" + ", ".join(missing) + "): set it in "
+                    "Stammdaten or via FINAMT_ELSTER_STREET / FINAMT_ELSTER_PLZ / "
+                    "FINAMT_ELSTER_CITY."
+                )
             dl = etree.SubElement(anm, _u("DatenLieferant"))
             etree.SubElement(dl, _u("Name")).text = (self.config.company_name or steuernr).strip()[
                 :45
             ]
-            etree.SubElement(dl, _u("Strasse")).text = (
-                f"{self.config.street} {self.config.house_number}".strip()[:30] or "—"
-            )
-            etree.SubElement(dl, _u("PLZ")).text = (self.config.postal_code or "00000").strip()[:5]
-            etree.SubElement(dl, _u("Ort")).text = (self.config.city or "—").strip()[:29]
+            etree.SubElement(
+                dl, _u("Strasse")
+            ).text = f"{self.config.street} {self.config.house_number}".strip()[:30]
+            etree.SubElement(dl, _u("PLZ")).text = self.config.postal_code.strip()[:5]
+            etree.SubElement(dl, _u("Ort")).text = self.config.city.strip()[:29]
             sf = etree.SubElement(anm, _u("Steuerfall"))
             ustva = etree.SubElement(sf, _u("Umsatzsteuervoranmeldung"))
             etree.SubElement(ustva, _u("Jahr")).text = str(year)
