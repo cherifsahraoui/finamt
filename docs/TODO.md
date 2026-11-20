@@ -59,7 +59,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 33 | EUR-8 | Kleinunternehmer flag per year in Stammdaten, used by the EÜR page | S | done (2026-11-20) | — |
 | 34 | UI-9 | Uploads as a background job; progress on every page; one at a time | S | done (2026-11-20) | owner bug report |
 | 35 | UI-10 | Language switch DE/EN for `/app` | M | done (2026-11-20) | owner request |
-| 36 | INV-2 | Verify the § 19 invoice note (§ 34a UStDV) and the invoice VAT rounding source | S | ready | — |
+| 36 | INV-2 | Verify the § 19 invoice note (§ 34a UStDV) and the invoice VAT rounding source | S | blocked (note verified 2026-11-20; rounding: UStAE 14.5 unreadable) | — |
 | 37 | PRINT-1 | Official print PDF (ERiC) for UStVA, annual USt and EÜR, kept in the archive | M | done (2026-11-20) | — |
 | 38 | EUR-9 | EÜR: ERiC check, XML download and test send from the web UI and CLI | M | done (2026-11-20) | — |
 | 39 | INV-3 | Outgoing invoices as ZUGFeRD (PDF/A-3 + CII XML) and XRechnung (UBL/CII XML) | L | ready | INV-1 (done); spec versions verified first (step 1) |
@@ -348,7 +348,12 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### INV-2: verify the open invoice rules
 
-- **Status**: ready · **Size**: S
+- **Status**: blocked (2026-11-20) · **Size**: S
+- **Done on 2026-11-20**: § 34a UStDV read: no wording prescribed, so `KLEINUNTERNEHMER_HINWEIS`
+  stays; tax-rules row "Kleinunternehmer invoice note" → verified. § 14 Abs. 4 UStG read: silent on
+  rounding.
+- **Open**: UStAE 14.5 (bundesfinanzministerium.de returned HTTP 503). Read it, then settle the
+  "invoice VAT rounding" row and the `TODO(verify)` in `invoicing/model.py::_r`.
 - **Goal**: two `TODO` rows in tax-rules.md ("Kleinunternehmer invoice note", "invoice VAT
   rounding"). Read § 34a UStDV (from 2025) and the UStAE on rounding; update the rows to
   `verified` with the source, and change `invoicing.KLEINUNTERNEHMER_HINWEIS` or the rounding in
