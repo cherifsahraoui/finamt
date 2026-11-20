@@ -191,12 +191,61 @@ EN: dict[str, str] = {
     ),
     "Nichts offen.": "Nothing open.",
     # invoices
-    "Ausgangsrechnungen mit fortlaufender Nummer (§ 14 UStG) kommen mit Aufgabe INV-1.": (
-        "Outgoing invoices with sequential numbers (§ 14 UStG) come with task INV-1."
+    "Nummer": "Number",
+    "Kunde": "Customer",
+    "Storno zu {n}": "Cancels {n}",
+    "storniert": "cancelled",
+    "stornieren": "cancel",
+    "Rechnung {n} stornieren? Es wird eine Rechnungskorrektur mit eigener Nummer erstellt.": (
+        "Cancel invoice {n}? A correction invoice with its own number is created."
     ),
-    "Bis dahin: Ausgangsrechnungen als Beleg der Art „Einnahme“ hochladen.": (
-        "Until then, upload outgoing invoices as receipts of type “Income”."
+    "Keine Rechnungen in diesem Jahr.": "No invoices this year.",
+    "Neue Rechnung": "New invoice",
+    "Name und Anschrift für den Absender fehlen in den Stammdaten.": (
+        "Name and address of the sender are missing in the settings."
     ),
+    "Rechnung nicht erstellt:": "Invoice not created:",
+    "Land (wenn nicht Deutschland)": "Country (if not Germany)",
+    "USt-IdNr. des Kunden (optional)": "Customer's VAT ID (optional)",
+    "Rechnungsdatum": "Invoice date",
+    "Leistungsdatum": "Date of supply",
+    "oder Leistungszeitraum von": "or period of supply from",
+    "bis": "to",
+    "Leistung": "Service",
+    "Menge": "Quantity",
+    "Einheit": "Unit",
+    "Std.": "hrs",
+    "Einzelpreis netto (€)": "Unit price net (€)",
+    "USt-Satz": "VAT rate",
+    "+ Position": "+ Line",
+    "Hinweise auf der Rechnung (z. B. Zahlungsziel, Grund einer Steuerbefreiung)": (
+        "Notes on the invoice (e.g. payment terms, reason for a tax exemption)"
+    ),
+    "Kleinunternehmer (§ 19 UStG): keine Umsatzsteuer ausweisen": (
+        "Small business (§ 19 UStG): show no VAT"
+    ),
+    "Hinweis für Kleinunternehmer": "Small-business note",
+    "Wortlaut bitte prüfen (docs/tax-rules.md, Zeile „Kleinunternehmer invoice note“).": (
+        "Please check the wording (docs/tax-rules.md, row “Kleinunternehmer invoice note”)."
+    ),
+    "Rechnung erstellen": "Create invoice",
+    "Die Nummer (JJJJ-NNNN) wird beim Erstellen fortlaufend vergeben. Die Rechnung wird als Beleg der Art „Einnahme“ mit dem Rechnungsdatum gespeichert; geht das Geld an einem anderen Tag ein, dort das Datum ändern (EÜR: Zahlungstag).": (
+        "The number (YYYY-NNNN) is assigned sequentially on creation. The invoice is stored as an "
+        "“Income” receipt with the invoice date; if the money arrives on another day, change the "
+        "date there (EÜR: payment date)."
+    ),
+    "Name und Anschrift des leistenden Unternehmers fehlen.": "Supplier name and address missing.",
+    "Name und Anschrift des Leistungsempfängers fehlen.": "Customer name and address missing.",
+    "Steuernummer oder USt-IdNr. des leistenden Unternehmers fehlt.": (
+        "Supplier tax number or VAT ID missing."
+    ),
+    "Mindestens eine Position ist nötig.": "At least one line is needed.",
+    "Leistungsdatum oder Leistungszeitraum fehlt.": "Date or period of supply missing.",
+    "Leistungszeitraum: Beginn und Ende angeben.": "Period of supply: give start and end.",
+    "Positionen mit 0 %: Hinweis auf den Grund (Steuerbefreiung) fehlt.": (
+        "Lines at 0 %: note on the reason (tax exemption) missing."
+    ),
+    "Hinweis auf die Steuerbefreiung (§ 19 UStG) fehlt.": "Note on the exemption (§ 19 UStG) missing.",
     # UStVA
     "USt-Erklärung": "Annual VAT return",
     "Umsatzsteuer-Erklärung": "Annual VAT return",

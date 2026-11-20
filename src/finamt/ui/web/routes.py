@@ -32,6 +32,7 @@ templates = Jinja2Templates(directory=str(_HERE / "templates"))
 templates.env.filters["eur"] = h.eur
 templates.env.filters["datum"] = h.datum
 templates.env.filters["zahl"] = h.zahl
+templates.env.filters["dezimal"] = lambda s: Decimal(str(s)) if s not in (None, "") else None
 
 router = APIRouter(prefix="/app", include_in_schema=False)
 
@@ -895,13 +896,214 @@ def sprache(lang: str = "de", zurueck: str = "/app"):
 
 
 # ---------------------------------------------------------------------------
-# Rechnungen (UI-5 waits for INV-1)
+# Rechnungen (UI-5, built on INV-1)
 # ---------------------------------------------------------------------------
+
+_RECHNUNG_SAETZE = ("19", "7", "0")
+
+
+def _rechnungen_render(request: Request, layout, jahr: int, **ctx) -> HTMLResponse:
+    from finamt.invoicing import KLEINUNTERNEHMER_HINWEIS
+
+    with h.open_repo(layout) as repo:
+        rows = repo.list_invoices(jahr) if repo is not None else []
+        storniert = {r["corrects"] for r in rows if r.get("corrects")}
+    tp = h.get_meta(layout, h.TAXPAYER_KEY)
+    heute = date.today()
+    form = ctx.pop("form", None) or {
+        "issue_date": heute.isoformat(),
+        "supply_date": heute.isoformat(),
+        "kleinunternehmer": _kleinunternehmer(layout, heute.year),
+        "kleinunternehmer_hinweis": KLEINUNTERNEHMER_HINWEIS,
+        "positionen": [],
+    }
+    while len(form["positionen"]) < 3:
+        form["positionen"].append({"satz": "0" if form.get("kleinunternehmer") else "19"})
+    return _render(
+        request,
+        "rechnungen.html",
+        layout,
+        "rechnungen",
+        rechnungen=rows,
+        storniert=storniert,
+        jahr=jahr,
+        form=form,
+        saetze=_RECHNUNG_SAETZE,
+        absender_fehlt=not (tp.get("name") and tp.get("street") and tp.get("city")),
+        **ctx,
+    )
 
 
 @router.get("/rechnungen", response_class=HTMLResponse)
-def rechnungen(request: Request, projekt: str | None = None):
-    return _render(request, "rechnungen.html", h.resolve(projekt), "rechnungen")
+def rechnungen(
+    request: Request,
+    projekt: str | None = None,
+    jahr: int | None = Query(default=None, ge=2000, le=2100),
+    meldung: str | None = None,
+    fehler: str | None = None,
+):
+    layout = h.resolve(projekt)
+    return _rechnungen_render(
+        request, layout, jahr or date.today().year, meldung=meldung, fehler=fehler
+    )
+
+
+@router.post("/rechnungen", response_class=HTMLResponse)
+def rechnung_anlegen(
+    request: Request,
+    projekt: str | None = Query(default=None),
+    kunde_name: str = Form(""),
+    kunde_strasse: str = Form(""),
+    kunde_plz: str = Form(""),
+    kunde_ort: str = Form(""),
+    kunde_land: str = Form(""),
+    kunde_ustid: str = Form(""),
+    issue_date: str = Form(""),
+    supply_date: str = Form(""),
+    supply_von: str = Form(""),
+    supply_bis: str = Form(""),
+    notes: str = Form(""),
+    kleinunternehmer: str = Form(""),
+    kleinunternehmer_hinweis: str = Form(""),
+    pos_beschreibung: list[str] = Form(default=[]),
+    pos_menge: list[str] = Form(default=[]),
+    pos_einheit: list[str] = Form(default=[]),
+    pos_preis: list[str] = Form(default=[]),
+    pos_satz: list[str] = Form(default=[]),
+):
+    """Issue an invoice (INV-1): number, PDF and a stored sale receipt."""
+    from finamt.invoicing import Invoice, InvoiceLine, Party, issue_invoice, supplier_from_taxpayer
+
+    layout = h.resolve(projekt)
+    ku = kleinunternehmer == "1"
+    n = max(len(pos_beschreibung), len(pos_preis))
+
+    def at(values: list[str], i: int) -> str:
+        return values[i].strip() if i < len(values) else ""
+
+    positionen = [
+        {
+            "beschreibung": at(pos_beschreibung, i),
+            "menge": at(pos_menge, i),
+            "einheit": at(pos_einheit, i),
+            "preis": at(pos_preis, i),
+            "satz": at(pos_satz, i) or "19",
+        }
+        for i in range(n)
+    ]
+    form = {
+        "kunde_name": kunde_name,
+        "kunde_strasse": kunde_strasse,
+        "kunde_plz": kunde_plz,
+        "kunde_ort": kunde_ort,
+        "kunde_land": kunde_land,
+        "kunde_ustid": kunde_ustid,
+        "issue_date": issue_date,
+        "supply_date": supply_date,
+        "supply_von": supply_von,
+        "supply_bis": supply_bis,
+        "notes": notes,
+        "kleinunternehmer": ku,
+        "kleinunternehmer_hinweis": kleinunternehmer_hinweis,
+        "positionen": [p for p in positionen if p["beschreibung"] or p["preis"]],
+    }
+    try:
+        lines = []
+        for p in form["positionen"]:
+            preis = h.parse_betrag(p["preis"])
+            menge = h.parse_betrag(p["menge"]) if p["menge"] else Decimal("1")
+            if preis is None:
+                raise ValueError(f"Position „{p['beschreibung']}“: Einzelpreis fehlt.")
+            satz = (
+                Decimal("0")
+                if ku
+                else Decimal(p["satz"] if p["satz"] in _RECHNUNG_SAETZE else "19")
+            )
+            lines.append(InvoiceLine(p["beschreibung"], menge, preis, satz, p["einheit"]))
+        von = date.fromisoformat(supply_von) if supply_von else None
+        bis = date.fromisoformat(supply_bis) if supply_bis else None
+        if bool(von) != bool(bis):
+            raise ValueError("Leistungszeitraum: Beginn und Ende angeben.")
+        inv = Invoice(
+            supplier=supplier_from_taxpayer(h.get_meta(layout, h.TAXPAYER_KEY)),
+            customer=Party(
+                name=kunde_name.strip(),
+                street=kunde_strasse.strip(),
+                postcode=kunde_plz.strip(),
+                city=kunde_ort.strip(),
+                country=kunde_land.strip(),
+                ust_idnr=kunde_ustid.strip().upper().replace(" ", ""),
+            ),
+            issue_date=date.fromisoformat(issue_date) if issue_date else date.today(),
+            supply_date=None if von else (date.fromisoformat(supply_date) if supply_date else None),
+            supply_period=(von, bis) if von and bis else None,
+            lines=lines,
+            notes=notes.strip(),
+            kleinunternehmer=ku,
+            kleinunternehmer_hinweis=kleinunternehmer_hinweis.strip(),
+        )
+        fehler = inv.missing_fields(need_number=False)
+        if fehler:
+            raise ValueError("\n".join(fehler))
+        layout.create_dirs()
+        with h.open_repo(layout, create=True) as repo:
+            res = issue_invoice(repo, inv, layout.pdfs_dir)
+    except ValueError as exc:
+        return _rechnungen_render(
+            request,
+            layout,
+            date.today().year,
+            form=form,
+            form_fehler=str(exc).split("\n"),
+        )
+    return _redirect(
+        "/rechnungen",
+        layout.name,
+        jahr=res.invoice.issue_date.year,
+        meldung=f"Rechnung {res.invoice.number} erstellt.",
+    )
+
+
+@router.post("/rechnungen/{nummer}/stornieren")
+def rechnung_stornieren(nummer: str, projekt: str | None = Query(default=None)):
+    from finamt.invoicing import cancel_invoice
+
+    layout = h.resolve(projekt)
+    try:
+        with h.open_repo(layout, create=True) as repo:
+            res = cancel_invoice(repo, nummer, layout.pdfs_dir)
+    except ValueError as exc:
+        return _redirect("/rechnungen", layout.name, fehler=str(exc))
+    return _redirect(
+        "/rechnungen",
+        layout.name,
+        jahr=res.invoice.issue_date.year,
+        meldung=f"Rechnung {nummer} storniert durch {res.invoice.number}.",
+    )
+
+
+@router.get("/rechnungen/{nummer}.pdf")
+def rechnung_pdf(nummer: str, projekt: str | None = None):
+    """The invoice PDF (the original of its sale receipt)."""
+    from fastapi.responses import FileResponse
+
+    from finamt.ui import api as _api  # lazy: api.py imports this module
+
+    layout = h.resolve(projekt)
+    with h.open_repo(layout) as repo:
+        data = repo.get_invoice(nummer) if repo is not None else None
+    datei = (
+        _api._find_stored_file(data["receipt_id"], layout.db_path)
+        if data and data.get("receipt_id")
+        else None
+    )
+    if datei is None:
+        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden.")
+    return FileResponse(
+        datei,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="Rechnung_{nummer}.pdf"'},
+    )
 
 
 # ---------------------------------------------------------------------------

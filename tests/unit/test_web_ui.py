@@ -170,7 +170,7 @@ class TestSkeleton:
             ("/app/belege", "Keine Belege"),
             ("/app/ustva", "Umsatzsteuer-Voranmeldung"),
             ("/app/euer", "Einnahmenüberschussrechnung"),
-            ("/app/rechnungen", "INV-1"),
+            ("/app/rechnungen", "Neue Rechnung"),
             ("/app/stammdaten", "Bundesland"),
         ],
     )
@@ -1141,3 +1141,99 @@ class TestNavigationUi8:
         for path in ("/app/partner", "/app/archiv", "/app/projekte"):
             assert f'href="{path}?projekt=testprojekt"' in html
             assert _get(client, path).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# UI-5: invoices (INV-1)
+# ---------------------------------------------------------------------------
+
+RECHNUNG = {
+    "kunde_name": "Kunde GmbH",
+    "kunde_strasse": "Hauptstraße 5",
+    "kunde_plz": "10115",
+    "kunde_ort": "Berlin",
+    "issue_date": "2025-03-31",
+    "supply_date": "2025-03-31",
+    "pos_beschreibung": ["Beratung", ""],
+    "pos_menge": ["10", ""],
+    "pos_einheit": ["Std.", ""],
+    "pos_preis": ["100,00", ""],
+    "pos_satz": ["19", "19"],
+}
+
+
+class TestRechnungen:
+    def _stamm(self):
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+
+    def _neu(self, client, **aend):
+        data = {**RECHNUNG, **aend}
+        return client.post("/app/rechnungen", params={"projekt": PROJEKT}, data=data)
+
+    def test_create_lists_and_stores_receipt(self, client):
+        self._stamm()
+        resp = self._neu(client)
+        assert "Rechnung 2025-0001 erstellt." in resp.text
+        assert ">2025-0001</a>" in resp.text
+        assert "1.190,00 €" in resp.text
+        [r] = _alle()
+        assert str(r.receipt_type) == "sale" and r.receipt_number == "2025-0001"
+        pdf = _get(client, "/app/rechnungen/2025-0001.pdf")
+        assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+
+    def test_numbers_are_sequential(self, client):
+        self._stamm()
+        self._neu(client)
+        resp = self._neu(client)
+        assert "Rechnung 2025-0002 erstellt." in resp.text
+
+    def test_missing_fields_keep_input(self, client):
+        self._stamm()
+        resp = self._neu(client, kunde_strasse="", kunde_ort="")
+        assert "Rechnung nicht erstellt:" in resp.text
+        assert "Name und Anschrift des Leistungsempfängers fehlen." in resp.text
+        assert 'value="Kunde GmbH"' in resp.text and 'value="Beratung"' in resp.text
+        assert _alle() == []
+
+    def test_missing_sender_warned(self, client):
+        html = _get(client, "/app/rechnungen").text
+        assert "Name und Anschrift für den Absender fehlen" in html
+        resp = self._neu(client)
+        assert "Name und Anschrift des leistenden Unternehmers fehlen." in resp.text
+
+    def test_cancel_creates_correction(self, client):
+        self._stamm()
+        self._neu(client)
+        resp = client.post("/app/rechnungen/2025-0001/stornieren", params={"projekt": PROJEKT})
+        assert "storniert durch" in resp.text
+        assert "Storno zu 2025-0001" in resp.text
+        assert "stornieren</button>" not in resp.text.split("2025-0001</a>")[-1].split("</tr>")[0]
+        resp = client.post("/app/rechnungen/2025-0001/stornieren", params={"projekt": PROJEKT})
+        assert "schon durch" in resp.text
+
+    def test_kleinunternehmer_invoice(self, client):
+        self._stamm()
+        resp = self._neu(
+            client,
+            kleinunternehmer="1",
+            kleinunternehmer_hinweis="Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.",
+        )
+        assert "1.000,00 €" in resp.text
+        assert _alle()[0].vat_amount == Decimal("0")
+
+    def test_kleinunternehmer_year_preselects(self, client):
+        _set_meta(h.SETTINGS_KEY, {"kleinunternehmer_jahre": [date.today().year]})
+        html = _get(client, "/app/rechnungen").text
+        assert re.search(r'name="kleinunternehmer" value="1" checked', html)
+
+    def test_period_needs_both_ends(self, client):
+        self._stamm()
+        resp = self._neu(client, supply_von="2025-03-01", supply_bis="")
+        assert "Beginn und Ende angeben" in resp.text
+
+    def test_unknown_pdf_404(self, client):
+        assert _get(client, "/app/rechnungen/2025-0099.pdf").status_code == 404
+
+    def test_english(self, client):
+        client.cookies.set("freibuch_lang", "en")
+        assert "New invoice" in _get(client, "/app/rechnungen").text
