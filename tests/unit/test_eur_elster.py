@@ -369,8 +369,44 @@ class TestBuildXmlRefusals:
             _build(_report({}, {"234": "2050.01"}))
 
     def test_kz_112_without_vat_line(self):
-        with pytest.raises(ValueError, match="EUR-2"):
+        with pytest.raises(ValueError, match="600240"):
             _build(_report({"112": "1000.00"}, {}))
+
+    def test_generate_eur_report_with_sales_builds(self):
+        # EUR-2: generate_eur now adds Kz 140 / 185 / 186, so a Regelbesteuerer builds.
+        from datetime import datetime
+
+        from finamt.models import Counterparty, ReceiptCategory, ReceiptData, ReceiptType
+        from finamt.tax.eur import generate_eur
+
+        def rd(typ, cat, total, vat, pct, sub=None):
+            r = ReceiptData(
+                raw_text=f"{typ}{cat}{total}",
+                receipt_type=ReceiptType(typ),
+                counterparty=Counterparty(name="X"),
+                receipt_date=datetime(2025, 3, 1),
+                total_amount=Decimal(total),
+                vat_amount=Decimal(vat) if vat else None,
+                vat_percentage=Decimal(pct) if pct else None,
+                category=ReceiptCategory(cat),
+            )
+            r.subcategory = sub
+            return r
+
+        report = generate_eur(
+            [
+                rd("sale", "services", "1190.00", "190.00", "19"),
+                rd("purchase", "software", "119.00", "19.00", "19"),
+                rd("purchase", "tax_settlement", "171.00", None, None, sub="vat_payment"),
+            ],
+            2025,
+        )
+        root = etree.fromstring(_build(report))
+        texts = {el.tag.split("}")[1]: el.text for el in root.iter() if el.text}
+        assert texts["E6000401"] == "1000,00"  # Kz 112
+        assert texts["E6000601"] == "190,00"  # Kz 140
+        assert texts["E6005001"] == "19,00"  # Kz 185
+        assert texts["E6005101"] == "171,00"  # Kz 186
 
     def test_unknown_kennzahl(self):
         with pytest.raises(ValueError, match="999"):

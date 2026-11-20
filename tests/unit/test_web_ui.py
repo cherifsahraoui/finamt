@@ -482,8 +482,9 @@ class TestEuer:
         assert "1.000,00 €" in html
         assert "Laptop-Shop" in html
         assert f"/app/belege/{laptop.id}" in html
-        # Gewinn = 1000 − 100; the laptop is not counted
-        assert "900,00 €" in html
+        # Gewinn = 1000 + 190 (Kz 140) − 100 − 19 (Kz 185); the laptop is not counted
+        assert ">140</span>" in html and ">185</span>" in html
+        assert "1.071,00 €" in html
 
     def test_json_download(self, client):
         _save(_receipt())

@@ -104,7 +104,7 @@ class TestNegativeAmounts:
         )
         assert report.total_einnahmen_netto == Decimal("500.00")
         assert report.total_einnahmen_ust == Decimal("95.00")
-        assert report.gewinn == Decimal("500.00")
+        assert report.gewinn == Decimal("595.00")  # 500 net + 95 VAT (Kz 140)
 
     def test_negative_with_rate_derives_net_from_rate(self):
         report = generate_eur([_r("-119.00", pct="19")], YEAR)
@@ -121,7 +121,7 @@ class TestNegativeAmounts:
             ],
             YEAR,
         )
-        assert report.gewinn == Decimal("-100.00")
+        assert report.gewinn == Decimal("-119.00")  # −100 net, −19 VAT (Kz 140)
         assert "VERLUST" in report.summary()
 
 
@@ -203,17 +203,11 @@ class TestKleinunternehmer:
         assert Decimal(d["total_einnahmen_ust"]) == Decimal("0")
         assert Decimal(d["total_ausgaben_vorsteuer"]) == Decimal("0")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "generate_eur has no Kleinunternehmer mode: input VAT on purchase invoices is "
-            "excluded from expenses even though a Kleinunternehmer cannot reclaim it. "
-            "Callers must pre-adjust receipts (see generate_eur docstring, docs/TODO.md)."
-        ),
-    )
     def test_purchase_vat_counts_as_expense_for_kleinunternehmer(self):
-        report = generate_eur([_r("119.00", "19.00", pct="19")], YEAR)
+        report = generate_eur([_r("119.00", "19.00", pct="19")], YEAR, kleinunternehmer=True)
         assert report.total_ausgaben_netto == Decimal("119.00")
+        assert report.total_betriebsausgaben == Decimal("119.00")
+        assert "185" not in report.kz_totals()
 
 
 # ---------------------------------------------------------------------------

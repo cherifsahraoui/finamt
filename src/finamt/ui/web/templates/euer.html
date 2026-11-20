@@ -25,7 +25,8 @@
       {% for ln in report.einnahmen_lines.values()|sort(attribute="kz") %}
       <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
       {% endfor %}
-      <tr class="total"><th>Summe</th><td class="num">{{ report.total_einnahmen_netto|eur }}</td></tr>
+      {% if report.kz140_ust_vereinnahmt %}<tr><th><span class="mono">140</span> Vereinnahmte Umsatzsteuer</th><td class="num">{{ report.kz140_ust_vereinnahmt|eur }}</td></tr>{% endif %}
+      <tr class="total"><th>Summe</th><td class="num">{{ report.total_betriebseinnahmen|eur }}</td></tr>
     </table>
     {% else %}<p class="empty">Keine Einnahmen.</p>{% endif %}
 
@@ -35,14 +36,16 @@
       {% for ln in report.ausgaben_lines.values()|sort(attribute="kz") %}
       <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
       {% endfor %}
-      <tr class="total"><th>Summe</th><td class="num">{{ report.total_ausgaben_netto|eur }}</td></tr>
+      {% if report.kz185_vorsteuer %}<tr><th><span class="mono">185</span> Gezahlte Vorsteuerbeträge</th><td class="num">{{ report.kz185_vorsteuer|eur }}</td></tr>{% endif %}
+      <tr class="total"><th>Summe</th><td class="num">{{ report.total_betriebsausgaben|eur }}</td></tr>
     </table>
     {% else %}<p class="empty">Keine Ausgaben.</p>{% endif %}
 
     <table class="kv result">
       <tr class="total"><th>Gewinn (ohne „zu prüfen“)</th><td class="num">{{ report.gewinn|eur }}</td></tr>
     </table>
-    <p class="hint">Netto-Beträge; die Umsatzsteuer-Zeilen (Kz 140/141/185/186) folgen mit EUR-2.</p>
+    {% if report.kleinunternehmer %}<p class="hint">Kleinunternehmer (§ 19 UStG): Bruttobeträge, keine Umsatzsteuer-Zeilen.</p>
+    {% else %}<p class="hint">Kategorien netto; die Umsatzsteuer steht in Kz 140 / 185, Zahlungen an und Erstattungen vom Finanzamt in Kz 186 / 141.</p>{% endif %}
   </section>
 
   <section class="card {% if zu_pruefen %}accent{% endif %}">

@@ -279,7 +279,8 @@ def _checked_totals(report: EURReport) -> dict[str, Decimal]:
     if "112" in totals and "140" not in totals:
         # ERiC rule 600240: taxable income (Kz 112) without collected VAT (Kz 140).
         raise ValueError(
-            "Refusing to build: Kz 112 without Kz 140. The EÜR VAT lines are missing (EUR-2)."
+            "Refusing to build: Kz 112 without Kz 140 (ERiC rule 600240). Was the report "
+            "made with kleinunternehmer=True, or do the sales lack their VAT?"
         )
     if totals.get("234", Decimal("0")) > SCHULDZINSEN_LIMIT:
         raise NotImplementedError(
