@@ -395,8 +395,22 @@ def generate_ustva(
         if not has_vat:
             continue
 
+        # Mixed-rate receipt: one line per split (CLN-3)
+        if r.vat_percentage is None and getattr(r, "vat_splits", None):
+            if _add_splits(report, r):
+                continue
+
         # Rate key
-        rate_key = str(r.vat_percentage.normalize()) if r.vat_percentage else "unknown"
+        rate_key = _rate_key(r.vat_percentage) if r.vat_percentage else "unknown"
+        if rate_key == "unknown":
+            report.warnings.append(
+                f"Beleg {_label(r)} ohne USt-Satz: "
+                + (
+                    "Umsatz in keiner Bemessungsgrundlage (Kz 81/86/35) gemeldet."
+                    if r.is_sale
+                    else "Vorsteuer in Kz 66 gemeldet; Satz bitte prüfen."
+                )
+            )
         if rate_key not in report.lines:
             report.lines[rate_key] = USTVALineItem(
                 vat_rate=r.vat_percentage.normalize() if r.vat_percentage else Decimal("0")
@@ -513,3 +527,60 @@ def _add_special(report: USTVAReport, r: ReceiptData) -> None:
     # Input tax (§ 15 Abs. 1 S. 1 Nr. 4 UStG) only for the business share.
     share = Decimal("1") - Decimal(str(r.private_use_share or 0))
     report.rc_input_vat += _r(tax * share)
+
+
+def _rate_key(rate: Decimal) -> str:
+    """Line key of a VAT rate: "19", "7", "10" (never exponent notation like "1E+1")."""
+    return f"{rate.normalize():f}"
+
+
+def _dec(v) -> Decimal | None:
+    return None if v is None or v == "" else Decimal(str(v))
+
+
+def _add_splits(report: USTVAReport, r: ReceiptData) -> bool:
+    """Add each ``vat_splits`` entry of a mixed-rate receipt to its rate line (CLN-3).
+
+    Returns False (receipt not booked) when a split lacks its rate or VAT amount, so the
+    caller falls back to the ``"unknown"`` line with a warning. A split without a net
+    amount gets net = VAT × 100 / rate. Purchases count only their business share.
+    """
+    parsed = []
+    for sp in r.vat_splits:
+        rate, vat, net = (
+            _dec(sp.get("vat_rate")),
+            _dec(sp.get("vat_amount")),
+            _dec(sp.get("net_amount")),
+        )
+        if rate is None or vat is None or (net is None and rate == 0):
+            return False
+        if net is None:
+            net = vat * Decimal("100") / rate
+        parsed.append((rate, vat, net))
+
+    split_vat = sum((vat for _, vat, _ in parsed), Decimal("0"))
+    if r.vat_amount is not None and abs(split_vat - r.vat_amount) > _TWO:
+        report.warnings.append(
+            f"Beleg {_label(r)}: USt der Aufteilung ({_r(split_vat)} €) weicht von der "
+            f"Beleg-USt ({r.vat_amount} €) ab; Aufteilung verwendet."
+        )
+
+    share = Decimal("1")
+    if r.is_purchase:
+        share -= Decimal(str(r.private_use_share or 0))
+    touched: set[str] = set()
+    for rate, vat, net in parsed:
+        key = _rate_key(rate)
+        ln = report.lines.setdefault(key, USTVALineItem(vat_rate=rate.normalize()))
+        if r.is_purchase:
+            ln.purchase_vat += _r(vat * share)
+            ln.purchase_net += _r(net * share)
+            if not touched:  # count the receipt once (total_receipts)
+                ln.purchase_count += 1
+        else:
+            ln.sale_vat += _r(vat)
+            ln.sale_net += _r(net)
+            if not touched:  # count the receipt once (total_receipts)
+                ln.sale_count += 1
+        touched.add(key)
+    return True
