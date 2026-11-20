@@ -8,7 +8,7 @@ Status
 - ``build_xml``     — Anlage EÜR 2025 envelope (datenartVersion ``EUER_2025``), test
                       builds only (Testmerker). Every element name, format and order is
                       listed in ``docs/tax-rules.md`` ("Anlage EÜR 2025 XML").
-                      Not built yet: AfA / GWG (Kz 130/131/132/136/137, EUR-3, needs
+                      Not built yet: AfA / GWG (Kz 130/131/132/136/137, EUR-3b, needs
                       Anlage AVEÜR), Kz 151 (needs the Zeile 42 split, Kz 153) and
                       Kz 234 above 2 050 € (needs Anlage SZ). Those raise
                       ``NotImplementedError``.
@@ -137,7 +137,7 @@ _GEWINN_PATHS = (
     "Ermittlung_Gewinn/Stpfl_GuV/E6007202",  # Zeile 97, Kz 219 (rules 600642, 600645)
 )
 
-#: AfA / GWG need Anlage AVEÜR and the depreciation decision (EUR-3, MANUAL-STEPS M3).
+#: AfA / GWG need Anlage AVEÜR and the depreciation decision (EUR-3b).
 _AFA_KZ = frozenset({"130", "131", "132", "136", "137"})
 
 #: Kz 151 (Zeile 41) must come with Zeile 42 "davon Erhaltungsaufwendungen" (Kz 153,
@@ -269,9 +269,9 @@ def _checked_totals(report: EURReport) -> dict[str, Decimal]:
         raise ValueError(f"No verified Anlage EÜR element for Kennzahl(en) {unknown}")
     afa = sorted(set(totals) & _AFA_KZ)
     if afa:
-        # TODO(verify): AfA / GWG lines need Anlage AVEÜR — see docs/tax-rules.md (EUR-3)
+        # TODO(verify): AfA / GWG lines need Anlage AVEÜR — see docs/tax-rules.md (EUR-3b)
         raise NotImplementedError(
-            f"Kz {', '.join(afa)}: AfA / GWG lines are not built yet (EUR-3, needs Anlage AVEÜR)."
+            f"Kz {', '.join(afa)}: AfA / GWG lines are not built yet (EUR-3b, needs Anlage AVEÜR)."
         )
     split = sorted(set(totals) & _NEEDS_SPLIT_KZ)
     if split:

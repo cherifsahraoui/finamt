@@ -28,7 +28,9 @@ collected VAT → Kz 140, Vorsteuer paid (business share) → Kz 185, VAT paid t
 every sale → Kz 111 at the gross amount received; purchases count at gross, no Kz 140/185.
 
 Known gaps (see docs/TODO.md):
-  - EUR-3: assets above the GWG limit need depreciation (AfA, Anlage AVEÜR) and are sent to review.
+  - EUR-3: assets above the GWG limit go to review unless they are in the asset register
+    (``assets=``, see ``finamt.tax.assets``); AfA then goes to Kz 130 / 131. Anlage AVEÜR and
+    a stored register are EUR-3b.
 
 Usage::
 
@@ -52,6 +54,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from ..models import ReceiptData
+from .assets import Asset, afa_for_year
 
 _TWO = Decimal("0.01")
 
@@ -88,6 +91,8 @@ KZ_LABELS: dict[str, str] = {
     # Betriebsausgaben
     "100": "Waren, Rohstoffe und Hilfsstoffe",
     "110": "Bezogene Fremdleistungen",
+    "130": "AfA auf bewegliche Wirtschaftsgüter (Anlage AVEÜR)",
+    "131": "AfA auf immaterielle Wirtschaftsgüter (Anlage AVEÜR)",
     "132": "Geringwertige Wirtschaftsgüter (§ 6 Abs. 2 EStG)",
     "150": "Miete/Pacht für Geschäftsräume",
     "151": "Sonstige Aufwendungen für betriebliche Grundstücke",
@@ -173,7 +178,8 @@ _SALE_REVIEW: dict[str, str] = {
 }
 
 _ASSET_REVIEW_REASON = (
-    "Anlagegut über 800 € netto: Abschreibung (AfA, Anlage AVEÜR) oder Sammelposten (EUR-3)"
+    "Anlagegut über 800 € netto: Abschreibung (AfA): in das Anlageverzeichnis aufnehmen "
+    "(Nutzungsdauer oder 1-Jahres-Regel für Computer, EUR-3)"
 )
 _UNKNOWN_VAT_REASON = "USt-Status unbekannt: steuerpflichtig (Kz 112) oder steuerfrei (Kz 103)?"
 
@@ -447,6 +453,7 @@ def generate_eur(
     year: int,
     *,
     kleinunternehmer: bool = False,
+    assets: Iterable[Asset] = (),
 ) -> EURReport:
     """
     Compute the EÜR figures from an iterable of receipts for a full fiscal year.
@@ -464,7 +471,14 @@ def generate_eur(
 
     ``kleinunternehmer=True`` (§ 19 UStG, D7): lines hold the gross business amount and no
     VAT; sales go to Kz 111.
+
+    ``assets``: the asset register (EUR-3). The AfA of each asset for ``year`` goes to Kz 130 /
+    131 (also for assets bought in earlier years). A purchase receipt linked to an asset via
+    ``receipt_id`` is not an expense by itself: only its VAT is booked (Kz 185) in the year
+    of the receipt. Receipts above the GWG limit that are not linked stay in review.
     """
+    asset_list = list(assets)
+    asset_receipts = {a.receipt_id for a in asset_list if a.receipt_id}
     report = EURReport(year=year, kleinunternehmer=kleinunternehmer)
     if year != FORM_YEAR:
         report.warnings.append(
@@ -490,6 +504,15 @@ def generate_eur(
         net = _r(r.business_net if r.business_net is not None else (r.net_amount or Decimal("0")))
         vat = _r(r.business_vat if r.business_vat is not None else (r.vat_amount or Decimal("0")))
         gross = _r(net + vat)
+
+        if r.is_purchase and r.id in asset_receipts:
+            # Cost is depreciated through the register; only the Vorsteuer is booked now.
+            akz = next(a.kz for a in asset_list if a.receipt_id == r.id)
+            ln = _add(report.ausgaben_lines, f"afa:{akz}", "equipment", akz, "")
+            if not kleinunternehmer:
+                ln.vat_amount += vat
+                ln.gross_amount += vat
+            continue
 
         if r.is_purchase:
             full_net = r.net_amount if r.net_amount is not None else r.total_amount
@@ -528,6 +551,14 @@ def generate_eur(
         ln.vat_amount += vat
         ln.gross_amount += gross
         ln.count += 1
+
+    for a in asset_list:
+        amount = afa_for_year(a, year)
+        if amount > 0:
+            ln = _add(report.ausgaben_lines, f"afa:{a.kz}", "equipment", a.kz, "")
+            ln.net_amount += amount
+            ln.gross_amount += amount
+            ln.count += 1
 
     # Final rounding pass
     for ln in (
