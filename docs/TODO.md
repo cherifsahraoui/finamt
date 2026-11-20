@@ -62,6 +62,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 36 | INV-2 | Verify the § 19 invoice note (§ 34a UStDV) and the invoice VAT rounding source | S | ready | — |
 | 37 | PRINT-1 | Official print PDF (ERiC) for UStVA, annual USt and EÜR, kept in the archive | M | done (2026-11-20) | — |
 | 38 | EUR-9 | EÜR: ERiC check, XML download and test send from the web UI and CLI | M | done (2026-11-20) | — |
+| 39 | INV-3 | Outgoing invoices as ZUGFeRD (PDF/A-3 + CII XML) and XRechnung (UBL/CII XML) | L | ready | INV-1 (done); spec versions verified first (step 1) |
 
 ---
 
@@ -431,6 +432,41 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   due on the 25th day after the quarter (§ 18a Abs. 2, verified).
 - **Files**: new `src/finamt/tax/zm.py` (+ later `zm_elster.py` in the `eur_elster.py` pattern), tests.
 - **Tests**: sums per VAT ID and quarter; missing VAT ID → error entry; credit notes reduce the sum.
+
+### INV-3: e-invoice formats for outgoing invoices (ZUGFeRD, XRechnung)
+
+- **Status**: ready · **Size**: L
+- **Goal**: like Accountable ("Du kannst ZUGFeRD- und XRechnung-Dateien beim Versenden einer
+  Rechnung verwenden"), an invoice from INV-1 can be issued as a machine-readable e-invoice next to
+  the PDF: **ZUGFeRD** (a PDF/A-3 with an embedded CII XML) and **XRechnung** (a standalone UBL or
+  CII XML, the German public-sector profile). The PDF from INV-1 stays the human-readable copy.
+- **Verified rules**: none yet. Add rows to tax-rules.md → "E-invoices" before coding:
+  - ZUGFeRD version and profile (e.g. 2.3.x, EN 16931 / BASIC WL / EXTENDED), XRechnung version
+    (e.g. 3.0.x) and the CII vs. UBL syntax — source: FeRD and KoSIT publications.
+  - Mandatory business terms in the XML (BT-*) and their mapping from `Invoice` (`invoicing/model.py`).
+  - When an issuer must use e-invoices (§ 14 UStG, Wachstumschancengesetz; the dates and thresholds
+    for 2027/2028). Mark TODO until a source is read. **This is not a legal obligation for the card to
+    implement**; it is an optional output.
+- **Files**: new `src/finamt/invoicing/einvoice.py` (`build_cii_xml`, `build_ubl_xml`,
+  `embed_zugferd(pdf, xml)`, `validate(xml)`), `invoicing/service.py` (optional `format` argument),
+  `cli.py` (`finamt invoice new --format pdf|zugferd|xrechnung`), `ui/api.py` (download link next to
+  the PDF, small change), `docs/tax-rules.md`, tests in `tests/unit/test_einvoice.py`.
+- **Steps**:
+  1. Read the official specs (FeRD / KoSIT) and fill the tax-rules.md rows; keep unverified ones TODO.
+  2. Map `Invoice` to the BT fields (seller, buyer, lines, VAT per rate, dates, payment reference,
+     Leitweg-ID for public customers if a field exists). Missing BT-required data → error, not guessed.
+  3. Build the XML with `lxml` or the standard library (no network; no schematron download in tests).
+  4. ZUGFeRD: embed the XML into the rendered PDF as the PDF/A-3 attachment `factur-x.xml`
+     (use PyMuPDF, already a dependency, unless it cannot do PDF/A-3; then TODO and raise
+     `NotImplementedError`).
+  5. Store the XML and the PDF together as the `sale` receipt's files.
+- **Tests** (offline; the KoSIT validator is not run in tests): every mandatory BT field present;
+  Decimal totals equal the INV-1 totals; the embedded XML is readable from the PDF attachment; a
+  missing buyer address → error. Official validation is a manual step (see MANUAL-STEPS.md).
+- **Done when**: tests pass; tax-rules.md rows verified or TODO with a reason; README feature list;
+  NOTICE.md; BASELINE.md (`invoicing/` row).
+- **Open for the owner**: which format is needed first (ZUGFeRD for customers, XRechnung for public
+  customers), and whether customers in the Leitweg-ID case exist.
 
 ---
 
