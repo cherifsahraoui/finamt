@@ -10,6 +10,17 @@
   <a class="button secondary" href="{{ href('/euer/' ~ jahr ~ '.json') }}">{{ _("JSON herunterladen") }}</a>
 </form>
 
+{% if ergebnis %}
+<div class="notice {{ 'ok' if ergebnis.success else 'err' }}" role="status">
+  {% if ergebnis.success %}
+    {% if ergebnis.aktion == "pruefen" %}{{ _("ERiC-Prüfung ohne Fehler. Nichts gesendet.") }}
+    {% else %}{{ _("Testfall gesendet (Testmerker; ELSTER löscht ihn).") }}{% if ergebnis.telenummer %} {{ _("Telenummer") }} {{ ergebnis.telenummer }}.{% endif %}{% endif %}
+  {% else %}
+    {% if ergebnis.nicht_erstellt %}{{ _("Anlage EÜR nicht erstellt:") }}{% else %}{{ _("Nicht übermittelt:") }}{% endif %}
+    {{ _(ergebnis.message) or _("unbekannter Fehler") }}{% if ergebnis.error_code %} ({{ _("Code") }} {{ ergebnis.error_code }}){% endif %}
+  {% endif %}
+</div>
+{% endif %}
 {% for w in report.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
 {% if stnr.fehler %}
 <div class="notice warn">{{ _("Steuernummer für die Anlage EÜR:") }} {{ _(stnr.fehler) }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten öffnen") }}</a></div>
@@ -69,4 +80,29 @@
     {% else %}<p class="ok">{{ _("Nichts offen.") }}</p>{% endif %}
   </section>
 </div>
+
+<section class="card" id="elster">
+  <h2>{{ _("An ELSTER (Anlage EÜR {jahr})", jahr=form_year) }}</h2>
+  {% if jahr != form_year %}
+  <p class="hint">{{ _("Geprüft ist nur das Formular {jahr}. Für andere Jahre wird keine Anlage EÜR erstellt (YEAR-1).", jahr=form_year) }}</p>
+  {% else %}
+  <form method="post" action="{{ href('/euer') }}" class="grid">
+    <input type="hidden" name="jahr" value="{{ jahr }}">
+    <label>{{ _("Art des Betriebs") }} <input name="art_des_betriebs" maxlength="25" value="{{ elster.art_des_betriebs }}" placeholder="{{ _('z. B. IT-Beratung') }}"></label>
+    <fieldset class="sub">
+      <legend>{{ _("Zeile 11: Grundstücke oder grundstücksgleiche Rechte entnommen oder veräußert?") }}</legend>
+      <label class="check"><input type="radio" name="grundstuecke" value="nein" {% if elster.grundstuecke == "nein" %}checked{% endif %}> {{ _("nein") }}</label>
+      <label class="check"><input type="radio" name="grundstuecke" value="ja" {% if elster.grundstuecke == "ja" %}checked{% endif %}> {{ _("ja") }}</label>
+    </fieldset>
+    <label>{{ _("Entnahmen (€, Zeile 106)") }} <input name="entnahmen" class="num" inputmode="decimal" value="{{ elster.entnahmen }}" placeholder="0,00"></label>
+    <label>{{ _("Einlagen (€, Zeile 107)") }} <input name="einlagen" class="num" inputmode="decimal" value="{{ elster.einlagen }}" placeholder="0,00"></label>
+    <div class="wide actions">
+      <button type="submit" name="aktion" value="pruefen">{{ _("Mit ERiC prüfen") }}</button>
+      <button type="submit" name="aktion" value="xml" class="secondary">{{ _("XML herunterladen") }}</button>
+      <button type="submit" name="aktion" value="test">{{ _("Testfall senden") }}</button>
+    </div>
+  </form>
+  <p class="hint">{{ _("Verbindliches Senden der Anlage EÜR ist in FreiBuch abgeschaltet (Entscheidung D3). Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den Stammdaten:") }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten") }}</a></p>
+  {% endif %}
+</section>
 {% endblock %}

@@ -246,3 +246,77 @@ def eur_zeile(r: ReceiptData) -> EurZeile | None:
     ):
         return EurZeile(ln.kz, ln.label, ln.reason)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Anlage EÜR to ELSTER (EUR-9)
+# ---------------------------------------------------------------------------
+
+#: Stammdaten "Rechtsform" → Anlage EÜR code E6000602 (eur_elster, verified in EUR-4).
+EUER_RECHTSFORM = {"Freiberuflich": "140"}
+
+
+def eur_taxpayer(tp: dict, art_des_betriebs: str, grundstuecke_entnommen: bool | None):
+    """
+    ``(EURTaxpayer, None)`` from the Stammdaten plus the two Anlage EÜR answers, or
+    ``(None, German error)`` naming what is missing.
+    """
+    from finamt.tax.eur_elster import EURTaxpayer
+
+    info = steuernummer_fuer(tp, "euer")
+    if info.fehler:
+        return None, f"Steuernummer: {info.fehler}"
+    if not all((tp.get("name"), tp.get("street"), tp.get("postcode"), tp.get("city"))):
+        return None, "Name und Anschrift fehlen in den Stammdaten."
+    rechtsform = EUER_RECHTSFORM.get(tp.get("rechtsform") or "Freiberuflich")
+    if rechtsform is None:
+        return (
+            None,
+            f"Rechtsform „{tp.get('rechtsform')}“ wird für die Anlage EÜR nicht unterstützt.",
+        )
+    if not (art_des_betriebs or "").strip():
+        return None, "Art des Betriebs fehlt."
+    if grundstuecke_entnommen is None:
+        return None, "Zeile 11 (Grundstücke entnommen oder veräußert) bitte beantworten."
+    return (
+        EURTaxpayer(
+            name=tp["name"].strip(),
+            street=tp["street"].strip(),
+            postal_code=tp["postcode"].strip(),
+            city=tp["city"].strip(),
+            steuernummer=info.elster13,
+            art_des_betriebs=art_des_betriebs.strip(),
+            grundstuecke_entnommen=grundstuecke_entnommen,
+            rechtsform=rechtsform,
+        ),
+        None,
+    )
+
+
+def eric_library_path(layout) -> str:
+    """``ERIC_LIBRARY_PATH`` (decision D4), else the ERiC path saved in Stammdaten."""
+    import os
+
+    from finamt.tax.eur_elster import ERIC_LIBRARY_ENV
+
+    return (
+        os.environ.get(ERIC_LIBRARY_ENV, "").strip()
+        or (get_meta(layout, ERIC_HOME_KEY).get("path") or "").strip()
+    )
+
+
+def elster_cert_config(layout, steuernummer: str, finanzamt_nr: str, bundesland_kz: str):
+    """``ElsterConfig`` with the certificate and PIN saved in Stammdaten, or ``None``."""
+    from finamt.tax.elster import ElsterConfig
+
+    cert = layout.root / CERT_FILENAME
+    pin = get_meta(layout, ELSTER_MISC_KEY).get("cert_pin") or ""
+    if not cert.exists() or not pin:
+        return None
+    return ElsterConfig(
+        cert_path=str(cert),
+        cert_password=pin,
+        steuernummer=steuernummer,
+        finanzamt_nr=finanzamt_nr,
+        bundesland_kz=bundesland_kz,
+    )

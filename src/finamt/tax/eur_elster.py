@@ -484,9 +484,12 @@ def eric_validate(
     *,
     datenart_version: str = DATENART_VERSION,
     log_dir: str | None = None,
+    eric_home: str | None = None,
 ) -> SubmissionResult:
     """
     Validate an EÜR envelope with the local ERiC library. **Nothing is sent.**
+
+    ``eric_home``: the ERiC lib directory; default ``ERIC_LIBRARY_PATH`` (decision D4).
 
     Runs ``EricBearbeiteVorgang`` with ``ERIC_VALIDIERE`` only and no certificate.
     ERiC still checks the Hersteller-ID in the envelope (a blocked demo ID fails).
@@ -496,7 +499,7 @@ def eric_validate(
         return SubmissionResult(
             success=False, error_code="VALIDATION_ERROR", error_message="; ".join(errors)
         )
-    eric_home = os.environ.get(ERIC_LIBRARY_ENV, "").strip()
+    eric_home = (eric_home or os.environ.get(ERIC_LIBRARY_ENV, "")).strip()
     if not eric_home:
         return SubmissionResult(
             success=False,
@@ -513,6 +516,7 @@ def submit(
     datenart_version: str = DATENART_VERSION,
     config: ElsterConfig | None = None,
     log_dir: str | None = None,
+    eric_home: str | None = None,
 ) -> SubmissionResult:
     """
     Validate and optionally transmit an EÜR envelope.
@@ -533,6 +537,9 @@ def submit(
         ``ElsterConfig.from_env()`` in test mode.
     log_dir:
         Optional ERiC log directory.
+    eric_home:
+        ERiC lib directory; default ``ERIC_LIBRARY_PATH`` (decision D4). Other variables such
+        as ``FINAMT_ERIC_HOME`` are never read here.
     """
     if mode == "live":
         raise NotImplementedError(LIVE_DISABLED_MESSAGE)
@@ -559,7 +566,7 @@ def submit(
         )
     if not datenart_version:
         raise ValueError("datenart_version must not be empty (e.g. 'EUER_2025').")
-    eric_home = os.environ.get(ERIC_LIBRARY_ENV, "").strip()
+    eric_home = (eric_home or os.environ.get(ERIC_LIBRARY_ENV, "")).strip()
     if not eric_home:
         return SubmissionResult(
             success=False,

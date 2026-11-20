@@ -813,3 +813,88 @@ class TestCliInvoice:
         result = runner.invoke(app, ["invoice", "new", "--file", str(f), "--db", str(db)])
         assert result.exit_code == 1
         assert "Leistungsempfängers fehlen" in result.output
+
+
+# ---------------------------------------------------------------------------
+# EUR-9: finamt eur --xml / --validate
+# ---------------------------------------------------------------------------
+
+
+class TestCliEurElster:
+    def _db(self, tmp_path):
+        from finamt.storage.sqlite import SQLiteRepository
+
+        db = _db_with(
+            tmp_path,
+            _stored(total="1190.00", vat="190.00", pct="19", when=datetime(2025, 3, 1)),
+        )
+        with SQLiteRepository(db_path=db) as repo:
+            repo.set_metadata(
+                "taxpayer",
+                {
+                    "name": "Erika Muster",
+                    "street": "Teststraße 1",
+                    "postcode": "80331",
+                    "city": "München",
+                    "state": "Bayern",
+                    "tax_number": "198/113/10010",
+                },
+            )
+            repo.set_metadata("elster_misc", {"hersteller_id": "12345"})
+        return db
+
+    ARGS = ["--art-des-betriebs", "IT-Beratung", "--grundstuecke", "nein"]
+
+    def test_xml_written(self, tmp_path):
+        db = self._db(tmp_path)
+        out = tmp_path / "euer.xml"
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", db, "--xml", str(out), *self.ARGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert "<E6000401>1000,00</E6000401>" in out.read_text(encoding="utf-8")
+
+    def test_validate_uses_eric(self, tmp_path, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        monkeypatch.setattr(eur_elster, "eric_validate", lambda xml, **kw: SubmissionResult(True))
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", self._db(tmp_path), "--validate", *self.ARGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert "ERiC-Prüfung ohne Fehler" in result.output
+
+    def test_validate_failure_exit_1(self, tmp_path, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        monkeypatch.setattr(
+            eur_elster,
+            "eric_validate",
+            lambda xml, **kw: SubmissionResult(False, error_code="X", error_message="kaputt"),
+        )
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", self._db(tmp_path), "--validate", *self.ARGS]
+        )
+        assert result.exit_code == 1
+        assert "kaputt" in result.output
+
+    def test_line_11_has_no_default(self, tmp_path):
+        result = runner.invoke(
+            app,
+            [
+                "eur",
+                "--year",
+                "2025",
+                "--db",
+                self._db(tmp_path),
+                "--xml",
+                str(tmp_path / "x.xml"),
+                "--art-des-betriebs",
+                "IT",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Zeile 11" in result.output
+        assert not (tmp_path / "x.xml").exists()

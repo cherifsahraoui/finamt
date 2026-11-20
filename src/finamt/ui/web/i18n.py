@@ -190,6 +190,30 @@ EN: dict[str, str] = {
         "These receipts are not in the profit until you decide ({betrag} net)."
     ),
     "Nichts offen.": "Nothing open.",
+    "Anlage EÜR nicht erstellt:": "Anlage EÜR not built:",
+    "An ELSTER (Anlage EÜR {jahr})": "To ELSTER (Anlage EÜR {jahr})",
+    "Geprüft ist nur das Formular {jahr}. Für andere Jahre wird keine Anlage EÜR erstellt (YEAR-1).": (
+        "Only the {jahr} form is verified. No Anlage EÜR is built for other years (YEAR-1)."
+    ),
+    "Art des Betriebs": "Type of business",
+    "z. B. IT-Beratung": "e.g. IT consulting",
+    "Zeile 11: Grundstücke oder grundstücksgleiche Rechte entnommen oder veräußert?": (
+        "Line 11: land or equivalent rights withdrawn or sold?"
+    ),
+    "nein": "no",
+    "ja": "yes",
+    "Entnahmen (€, Zeile 106)": "Withdrawals (€, line 106)",
+    "Einlagen (€, Zeile 107)": "Contributions (€, line 107)",
+    "Verbindliches Senden der Anlage EÜR ist in FreiBuch abgeschaltet (Entscheidung D3). Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den Stammdaten:": (
+        "Binding submission of the Anlage EÜR is switched off in FreiBuch (decision D3). Tax "
+        "number, Hersteller-ID, certificate and ERiC path come from the settings:"
+    ),
+    "Name und Anschrift fehlen in den Stammdaten.": "Name and address are missing in the settings.",
+    "Art des Betriebs fehlt.": "Type of business missing.",
+    "Zeile 11 (Grundstücke entnommen oder veräußert) bitte beantworten.": (
+        "Please answer line 11 (land withdrawn or sold)."
+    ),
+    "Zertifikat und PIN fehlen in den Stammdaten.": "Certificate and PIN are missing in the settings.",
     # invoices
     "Nummer": "Number",
     "Kunde": "Customer",

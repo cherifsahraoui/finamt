@@ -658,3 +658,24 @@ class TestRealEric:
         xml = _build(_golden_report(), hersteller_id=_REAL_HERSTELLER_ID)
         result = eur_elster.eric_validate(xml, log_dir=str(tmp_path))
         assert result.success, f"{result.error_code}: {result.error_message}"
+
+
+class TestExplicitEricHome:
+    """EUR-9: callers may pass the ERiC directory; default stays ERIC_LIBRARY_PATH (D4)."""
+
+    def test_explicit_path_used_without_env(self, monkeypatch, tmp_path, no_eric):
+        seen = {}
+
+        def fake_run(xml, eric_home, datenart_version, cfg, log_dir):
+            seen["eric_home"] = eric_home
+            return eur_elster.SubmissionResult(success=True)
+
+        monkeypatch.setattr(eur_elster, "_eric_run", fake_run)
+        assert eur_elster.eric_validate(_envelope(), eric_home=str(tmp_path)).success
+        assert seen["eric_home"] == str(tmp_path)
+        eur_elster.submit(_envelope(), mode="test", config=_cfg(), eric_home=str(tmp_path))
+        assert seen["eric_home"] == str(tmp_path)
+
+    def test_still_missing_without_both(self, no_eric):
+        result = eur_elster.eric_validate(_envelope())
+        assert result.error_code == "ERIC_LIBRARY_PATH_MISSING"

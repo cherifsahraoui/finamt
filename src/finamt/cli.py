@@ -401,13 +401,21 @@ class FinamtCLI:
         db_path: Path | None = None,
         output: Path | None = None,
         kleinunternehmer: bool = False,
+        xml: Path | None = None,
+        validate: bool = False,
+        elster: dict | None = None,
     ) -> int:
         """
         Print the EÜR for ``year``. Returns 1 when receipts still need a manual
         decision (``review_lines``), so the result can't be filed by mistake.
+
+        ``xml`` / ``validate`` (EUR-9): build the Anlage EÜR XML (Testmerker) and write it,
+        and/or check it with ERiC (``ERIC_LIBRARY_PATH``; nothing is sent). ``elster`` holds
+        ``art_des_betriebs``, ``grundstuecke_entnommen``, ``entnahmen``, ``einlagen``.
         """
         with get_repository(db_path) as repo:
             receipts = list(repo.find_by_period(date(year, 1, 1), date(year, 12, 31)))
+            meta = {k: repo.get_metadata(k) or {} for k in ("taxpayer", "elster_misc")}
 
         if not receipts:
             print(f"No receipts found for {year}.")
@@ -426,6 +434,41 @@ class FinamtCLI:
                 "nicht abgabereif, erst entscheiden."
             )
             return 1
+        if xml or validate:
+            return self._eur_elster(report, meta, xml, validate, elster or {})
+        return 0
+
+    @staticmethod
+    def _eur_elster(report, meta: dict, xml_out: Path | None, validate: bool, e: dict) -> int:
+        from finamt.tax import eur_elster
+        from finamt.ui.web.helpers import eur_taxpayer
+
+        taxpayer, fehler = eur_taxpayer(
+            meta["taxpayer"], e.get("art_des_betriebs") or "", e.get("grundstuecke_entnommen")
+        )
+        if fehler:
+            print(f"✗  {fehler}", file=sys.stderr)
+            return 1
+        try:
+            xml = eur_elster.build_xml(
+                report,
+                taxpayer,
+                entnahmen=e.get("entnahmen") or Decimal("0"),
+                einlagen=e.get("einlagen") or Decimal("0"),
+                hersteller_id=(meta["elster_misc"].get("hersteller_id") or "").strip(),
+            )
+        except (ValueError, NotImplementedError) as exc:
+            print(f"✗  Anlage EÜR nicht erstellt: {exc}", file=sys.stderr)
+            return 1
+        if xml_out:
+            xml_out.write_bytes(xml)
+            print(f"Anlage EÜR XML (Testmerker) → {xml_out}")
+        if validate:
+            res = eur_elster.eric_validate(xml)
+            if not res.success:
+                print(f"✗  ERiC: {res.error_code}: {res.error_message}", file=sys.stderr)
+                return 1
+            print("✓  ERiC-Prüfung ohne Fehler. Nichts gesendet.")
         return 0
 
 
@@ -641,10 +684,48 @@ def cmd_eur(
         typer.Option("--kleinunternehmer", help="§ 19 UStG: gross amounts, sales on Kz 111."),
     ] = False,
     db: Annotated[Path | None, DbOpt] = None,
+    xml: Annotated[
+        Path | None,
+        typer.Option("--xml", help="Write the Anlage EÜR XML (with Testmerker) to this file."),
+    ] = None,
+    validate: Annotated[
+        bool, typer.Option("--validate", help="Check the Anlage EÜR with ERiC; nothing is sent.")
+    ] = False,
+    art_des_betriebs: Annotated[
+        str, typer.Option("--art-des-betriebs", help="Form line: type of business (max 25).")
+    ] = "",
+    grundstuecke: Annotated[
+        str | None,
+        typer.Option(
+            "--grundstuecke",
+            help="Line 11: land withdrawn or sold this year? 'ja' or 'nein' (no default).",
+        ),
+    ] = None,
+    entnahmen: Annotated[str, typer.Option("--entnahmen", help="Line 106, EUR.")] = "0",
+    einlagen: Annotated[str, typer.Option("--einlagen", help="Line 107, EUR.")] = "0",
 ) -> None:
     """EÜR (Anlage EÜR Kennzahlen) for a year; exit code 1 while receipts need review."""
+    if grundstuecke not in (None, "ja", "nein"):
+        raise typer.BadParameter("--grundstuecke must be 'ja' or 'nein'.")
+    try:
+        betraege = {
+            "entnahmen": Decimal(entnahmen.replace(",", ".")),
+            "einlagen": Decimal(einlagen.replace(",", ".")),
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise typer.BadParameter("--entnahmen / --einlagen must be amounts.") from exc
     rc = FinamtCLI().run_eur(
-        year=year, db_path=db, output=output, kleinunternehmer=kleinunternehmer
+        year=year,
+        db_path=db,
+        output=output,
+        kleinunternehmer=kleinunternehmer,
+        xml=xml,
+        validate=validate,
+        elster={
+            "art_des_betriebs": art_des_betriebs,
+            "grundstuecke_entnommen": {"ja": True, "nein": False}.get(grundstuecke or ""),
+            **betraege,
+        },
     )
     if rc != 0:
         raise typer.Exit(code=rc)

@@ -1261,3 +1261,140 @@ class TestRechnungen:
     def test_english(self, client):
         client.cookies.set("freibuch_lang", "en")
         assert "New invoice" in _get(client, "/app/rechnungen").text
+
+
+# ---------------------------------------------------------------------------
+# EUR-9: Anlage EÜR to ELSTER from the EÜR page
+# ---------------------------------------------------------------------------
+
+
+class TestEuerElster:
+    FORM = {"jahr": "2025", "art_des_betriebs": "IT-Beratung", "grundstuecke": "nein"}
+
+    def _daten(self, review=False):
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        _set_meta(h.ELSTER_MISC_KEY, {"hersteller_id": "12345", "cert_pin": "123456"})
+        receipts = [
+            _receipt(typ="sale", cat="services", total="1190.00", vat="190.00"),
+            _receipt(name="Softwarehaus"),
+        ]
+        if review:
+            receipts.append(_receipt(cat="donations", total="50.00", vat="0.00", pct="0"))
+        _save(*receipts)
+
+    def _post(self, client, aktion, **aend):
+        data = {**self.FORM, "aktion": aktion, **aend}
+        return client.post("/app/euer", params={"projekt": PROJEKT}, data=data)
+
+    def test_section_and_buttons(self, client, monkeypatch):
+        import finamt.ui.web.routes as routes
+
+        monkeypatch.setattr(routes, "live_submission_allowed", lambda: True)
+        html = _get(client, "/app/euer", jahr=2025).text
+        assert "An ELSTER (Anlage EÜR 2025)" in html
+        for aktion in ("pruefen", "xml", "test"):
+            assert f'name="aktion" value="{aktion}"' in html
+        assert 'value="live"' not in html  # D3: never a live button for the EÜR
+
+    def test_other_year_has_no_form(self, client):
+        html = _get(client, "/app/euer", jahr=2024).text
+        assert "Geprüft ist nur das Formular 2025" in html
+        assert 'name="aktion" value="xml"' not in html
+
+    def test_xml_download(self, client):
+        from finamt.tax.elster import TESTMERKER
+
+        self._daten()
+        resp = self._post(client, "xml")
+        assert resp.status_code == 200
+        assert 'filename="EUER_2025.xml"' in resp.headers["content-disposition"]
+        xml = resp.content.decode("utf-8")
+        assert f"<Testmerker>{TESTMERKER}</Testmerker>" in xml
+        assert "<E6000401>1000,00</E6000401>" in xml  # Kz 112
+        assert "<E6000601>190,00</E6000601>" in xml  # Kz 140
+        assert "IT-Beratung" in xml
+
+    def test_check_uses_eric_path_from_env_then_stammdaten(self, client, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        self._daten()
+        _set_meta(h.ERIC_HOME_KEY, {"path": "/stammdaten/eric"})
+        seen = {}
+
+        def fake(xml, **kw):
+            seen.update(kw)
+            return SubmissionResult(success=True)
+
+        monkeypatch.setattr(eur_elster, "eric_validate", fake)
+        monkeypatch.delenv(eur_elster.ERIC_LIBRARY_ENV, raising=False)
+        resp = self._post(client, "pruefen")
+        assert "ERiC-Prüfung ohne Fehler. Nichts gesendet." in resp.text
+        assert seen["eric_home"] == "/stammdaten/eric"
+        monkeypatch.setenv(eur_elster.ERIC_LIBRARY_ENV, "/env/eric")
+        self._post(client, "pruefen")
+        assert seen["eric_home"] == "/env/eric"
+
+    def test_eric_errors_shown(self, client, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        self._daten()
+        monkeypatch.setattr(
+            eur_elster,
+            "eric_validate",
+            lambda xml, **kw: SubmissionResult(False, error_code="610301202", error_message="HID"),
+        )
+        resp = self._post(client, "pruefen")
+        assert "Nicht übermittelt:" in resp.text and "610301202" in resp.text
+
+    def test_test_send_needs_certificate(self, client):
+        self._daten()
+        assert "Zertifikat und PIN fehlen" in self._post(client, "test").text
+
+    def test_test_send_uses_test_mode(self, client, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        self._daten()
+        (_layout().root / h.CERT_FILENAME).write_bytes(b"pfx")
+        seen = {}
+
+        def fake(xml, mode="dry_run", **kw):
+            seen.update(kw, mode=mode, xml=xml)
+            return SubmissionResult(success=True, telenummer="T-42")
+
+        monkeypatch.setattr(eur_elster, "submit", fake)
+        resp = self._post(client, "test")
+        assert "Testfall gesendet" in resp.text and "T-42" in resp.text
+        assert seen["mode"] == "test"
+        assert seen["config"].cert_password == "123456"
+        assert eur_elster.has_testmerker(seen["xml"])
+
+    @pytest.mark.parametrize(
+        "aend,text",
+        [
+            ({"grundstuecke": ""}, "Zeile 11"),
+            ({"art_des_betriebs": ""}, "Art des Betriebs fehlt."),
+        ],
+    )
+    def test_missing_answers(self, client, aend, text):
+        self._daten()
+        resp = self._post(client, "xml", **aend)
+        assert resp.headers["content-type"].startswith("text/html")
+        assert text in resp.text
+
+    def test_refusal_shown_for_review_lines(self, client):
+        self._daten(review=True)
+        resp = self._post(client, "xml")
+        assert "Anlage EÜR nicht erstellt:" in resp.text
+        assert "ZU PRÜFEN" in resp.text
+
+    def test_missing_stammdaten(self, client):
+        _save(_receipt(typ="sale", cat="services", total="1190.00", vat="190.00"))
+        assert "Steuernummer:" in self._post(client, "xml").text
+
+    def test_art_des_betriebs_remembered(self, client):
+        self._daten()
+        self._post(client, "xml")
+        assert 'value="IT-Beratung"' in _get(client, "/app/euer", jahr=2025).text

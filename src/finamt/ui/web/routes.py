@@ -659,6 +659,12 @@ def _xml_download(resp: Response, filename: str) -> Response:
 def euer(request: Request, projekt: str | None = None, jahr: int | None = None):
     layout = h.resolve(projekt)
     jahr = jahr if jahr and 2000 <= jahr <= 2100 else date.today().year - 1
+    return _render(request, "euer.html", layout, "euer", **_euer_context(layout, jahr))
+
+
+def _euer_context(layout, jahr: int, elster: dict | None = None, ergebnis: dict | None = None):
+    from finamt.tax.eur import FORM_YEAR
+
     receipts = _receipts(layout, date(jahr, 1, 1), date(jahr, 12, 31))
     report = generate_eur(receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr))
     zu_pruefen = []
@@ -666,15 +672,105 @@ def euer(request: Request, projekt: str | None = None, jahr: int | None = None):
         zeile = h.eur_zeile(r)
         if zeile and zeile.zu_pruefen:
             zu_pruefen.append((r, zeile))
-    return _render(
-        request,
-        "euer.html",
-        layout,
-        "euer",
-        report=report,
-        jahr=jahr,
-        zu_pruefen=zu_pruefen,
-        stnr=h.steuernummer_fuer(h.get_meta(layout, h.TAXPAYER_KEY), "euer"),
+    s = h.get_meta(layout, h.SETTINGS_KEY)
+    return {
+        "report": report,
+        "jahr": jahr,
+        "zu_pruefen": zu_pruefen,
+        "stnr": h.steuernummer_fuer(h.get_meta(layout, h.TAXPAYER_KEY), "euer"),
+        "form_year": FORM_YEAR,
+        "elster": elster
+        or {
+            "art_des_betriebs": s.get("euer_art_des_betriebs") or "",
+            "grundstuecke": "",
+            "entnahmen": "",
+            "einlagen": "",
+        },
+        "ergebnis": ergebnis,
+    }
+
+
+@router.post("/euer", response_class=HTMLResponse)
+def euer_elster(
+    request: Request,
+    projekt: str | None = Query(default=None),
+    jahr: int = Form(...),
+    aktion: str = Form(...),
+    art_des_betriebs: str = Form(""),
+    grundstuecke: str = Form(""),
+    entnahmen: str = Form(""),
+    einlagen: str = Form(""),
+):
+    """
+    EUR-9: Anlage EÜR to ELSTER. ``aktion``: ``pruefen`` (ERiC, nothing sent), ``xml``
+    (download, Testmerker), ``test`` (test send). Live sending is disabled for the EÜR (D3).
+    """
+    from finamt.tax import eur_elster
+
+    layout = h.resolve(projekt)
+    if aktion not in ("pruefen", "xml", "test") or not 2000 <= jahr <= 2100:
+        raise HTTPException(status_code=400, detail="Ungültige Aktion oder ungültiges Jahr.")
+    elster = {
+        "art_des_betriebs": art_des_betriebs.strip(),
+        "grundstuecke": grundstuecke,
+        "entnahmen": entnahmen,
+        "einlagen": einlagen,
+    }
+    if art_des_betriebs.strip():
+        _merge_settings(layout, euer_art_des_betriebs=art_des_betriebs.strip())
+
+    def fertig(ergebnis: dict) -> HTMLResponse:
+        ergebnis["aktion"] = aktion
+        return _render(
+            request,
+            "euer.html",
+            layout,
+            "euer",
+            **_euer_context(layout, jahr, elster=elster, ergebnis=ergebnis),
+        )
+
+    tp = h.get_meta(layout, h.TAXPAYER_KEY)
+    grund = {"ja": True, "nein": False}.get(grundstuecke)
+    taxpayer, fehler = h.eur_taxpayer(tp, art_des_betriebs, grund)
+    if fehler:
+        return fertig({"success": False, "message": fehler})
+    hersteller_id = (h.get_meta(layout, h.ELSTER_MISC_KEY).get("hersteller_id") or "").strip()
+    try:
+        ent = h.parse_betrag(entnahmen) or Decimal("0")
+        ein = h.parse_betrag(einlagen) or Decimal("0")
+        report = _euer_context(layout, jahr)["report"]
+        xml = eur_elster.build_xml(
+            report, taxpayer, entnahmen=ent, einlagen=ein, hersteller_id=hersteller_id
+        )
+    except (ValueError, NotImplementedError) as exc:
+        return fertig({"success": False, "message": str(exc), "nicht_erstellt": True})
+
+    if aktion == "xml":
+        return Response(
+            content=xml,
+            media_type="text/xml; charset=UTF-8",
+            headers={"Content-Disposition": f'attachment; filename="EUER_{jahr}.xml"'},
+        )
+    eric = h.eric_library_path(layout)
+    if aktion == "pruefen":
+        res = eur_elster.eric_validate(xml, eric_home=eric or None)
+    else:
+        land = bundesland_by_name(tp.get("state"))
+        cfg = h.elster_cert_config(
+            layout, taxpayer.steuernummer, taxpayer.steuernummer[:4], land.kz if land else ""
+        )
+        if cfg is None:
+            return fertig(
+                {"success": False, "message": "Zertifikat und PIN fehlen in den Stammdaten."}
+            )
+        res = eur_elster.submit(xml, mode="test", config=cfg, eric_home=eric or None)
+    return fertig(
+        {
+            "success": res.success,
+            "message": res.error_message or "",
+            "error_code": res.error_code,
+            "telenummer": res.telenummer,
+        }
     )
 
 
