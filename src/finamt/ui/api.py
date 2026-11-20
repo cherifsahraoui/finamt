@@ -2098,24 +2098,46 @@ from finamt.ui.web import register as _register_web_ui  # noqa: E402
 _register_web_ui(app)
 
 # ---------------------------------------------------------------------------
-# Static SPA (must be last)
+# Start page and the old SPA (must be last)
+#
+# UI-6 (FreiBuch): "/" now opens the new UI at /app. The old compiled bundle moved to
+# /legacy-ui for one release (it has no client-side router, so its path doesn't matter);
+# its assets keep their absolute URLs (/assets/…, /finamt_icon.svg).
 # ---------------------------------------------------------------------------
 
 STATIC_DIR = Path(__file__).parent / "static"
+LEGACY_UI_PATH = "/legacy-ui"
+
+
+@app.get("/", include_in_schema=False)
+async def start_page():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse("/app", status_code=307)
+
 
 if STATIC_DIR.exists() and any(STATIC_DIR.iterdir()):
     assets_dir = STATIC_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        file_path = STATIC_DIR / full_path
-        if file_path.is_file():
-            return FileResponse(file_path)
+    @app.get(LEGACY_UI_PATH, include_in_schema=False)
+    @app.get(LEGACY_UI_PATH + "/{rest:path}", include_in_schema=False)
+    async def serve_legacy_spa(rest: str = ""):
         return FileResponse(STATIC_DIR / "index.html")
-else:
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_not_built(full_path: str):
+    async def serve_static_file(full_path: str):
+        file_path = (STATIC_DIR / full_path).resolve()
+        try:
+            file_path.relative_to(STATIC_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Not found.") from None
+        if file_path.is_file():
+            return FileResponse(file_path)
+        raise HTTPException(status_code=404, detail="Not found.")
+else:
+
+    @app.get(LEGACY_UI_PATH, include_in_schema=False)
+    async def spa_not_built():
         return {"error": "Frontend not built yet."}

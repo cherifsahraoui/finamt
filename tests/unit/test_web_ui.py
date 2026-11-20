@@ -193,10 +193,34 @@ class TestSkeleton:
         assert client.get("/app/static/app.css").status_code == 200
         assert "htmx" in client.get("/app/static/htmx.min.js").text[:200]
 
-    def test_old_ui_still_served(self, client):
-        resp = client.get("/")
-        assert resp.status_code == 200
-        assert '<div id="root">' in resp.text
+    def test_start_page_is_new_ui(self, client):
+        # UI-6: "/" opens /app
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == "/app"
+        assert '<nav class="sidebar"' in client.get("/").text
+
+    def test_old_ui_moved_to_legacy_path(self, client):
+        for path in ("/legacy-ui", "/legacy-ui/", "/legacy-ui/anything"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert '<div id="root">' in resp.text
+        assert 'href="/legacy-ui"' in _get(client, "/app").text
+
+    def test_old_ui_assets_keep_their_urls(self, client):
+        assert client.get("/finamt_icon.svg").status_code == 200
+        from finamt.ui.api import STATIC_DIR
+
+        js = next((STATIC_DIR / "assets").glob("*.js")).name
+        assert client.get(f"/assets/{js}").status_code == 200
+
+    def test_unknown_path_is_404_not_old_ui(self, client):
+        resp = client.get("/no-such-page")
+        assert resp.status_code == 404
+        assert '<div id="root">' not in resp.text
+
+    def test_static_path_traversal_refused(self, client):
+        assert client.get("/..%2F..%2Fapi.py").status_code == 404
 
 
 class TestBelegeList:

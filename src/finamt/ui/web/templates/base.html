@@ -39,7 +39,7 @@
            {% if code == lang %}aria-current="true"{% endif %} title="{{ name }}">{{ code|upper }}</a>
         {% endfor %}
       </div>
-      <p class="hint">{{ _("Alte Oberfläche:") }} <a href="/">/</a></p>
+      <p class="hint">{{ _("Alte Oberfläche:") }} <a href="/legacy-ui">/legacy-ui</a></p>
     </nav>
     <main>
       {% if not ohne_upload_status %}{% include "_upload_status.html" %}{% endif %}
