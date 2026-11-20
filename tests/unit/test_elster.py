@@ -128,7 +128,8 @@ class TestBundeslandZiel:
     def test_all_16_states_present(self):
         from finamt.tax.elster import _BUNDESLAND_ZIEL
 
-        assert len(_BUNDESLAND_ZIEL) == 16
+        # 01–16 plus the 13-digit Steuernummer prefixes, all mapping to 16 Länder
+        assert len(set(_BUNDESLAND_ZIEL.values())) == 16
 
     def test_unknown_code_returns_input(self):
         assert _bundesland_ziel("99") == "99"

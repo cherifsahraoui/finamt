@@ -172,6 +172,15 @@ Labels shortened. Where the line number is given, it is the 2025 form line.
 | ERiC 44 API | `EricBearbeiteVorgang` takes 7 arguments; the transfer handle was removed. ERiC 44 libraries are not compatible with ERiC 43. | ERiC-44.3 `ERiC-Releasenotes.pdf` 5.2.6, 5.2.8; `include/ericapi.h` | ERiC 44+ | verified (2026-11-20); `eric_wrapper.py` adapted |
 | EÜR `datenartVersion` | `EUER_<year>` (from 2015; new Nutzdaten structure from 2021), e.g. `EUER_2025`. Verfahren `ElsterErklaerung`, DatenArt `EUER`. | ERiC-44.3 `Datenartversionmatrix.ods`; `Beispiele/EUER_2025_ok.xml` | 2025 | verified (2026-11-20) |
 
+## Steuernummer and Land codes (`tax/bundesland.py`, `elster.normalise_steuernummer`, `elster._bundesland_ziel`)
+
+| value | rule | legal source | year | status |
+|---|---|---|---|---|
+| 13-digit ELSTER Steuernummer | ERiC converts the number "im Format des Steuerbescheides" plus a 2-digit Landesnummer (= first two digits of the Bundesfinanzamtsnummer) into the 13-digit ELSTER format (`EricMakeElsterStnr`) and checks it. `normalise_steuernummer` gives the same result as ERiC for all 16 Länder (18 Finanzämter, incl. Bayern 91/92 and NRW 51/53; run 2026-11-20, cases pinned in `tests/unit/test_bundesland.py`). Baden-Württemberg numbers are printed `FFBBB/UUUUP`; ERiC rejects `FF/BBB/UUUUP` for BW. Bayern and Berlin numbers in the short form `BBB/UUUUP` need the Finanzamtsnummer; the UI asks for the long form instead. | ERiC-44.3 `include/ericapi.h` (`EricMakeElsterStnr`, `EricPruefeSteuernummer`); ERiC-44.3-run | — | verified (2026-11-20) |
+| Landesnummern | First two digits of the Bundesfinanzamtsnummer per Land: SL 10, BE 11, SH 21, HH 22, NI 23, HB 24, HE 26, RP 27, BW 28, BB 30, ST 31, SN 32, MV 40, TH 41, NW 51–53 (test Finanzämter 54–56), BY 91–92. The Finanzamtsnr. is the first four digits of the 13-digit number. | ERiC-44.3 `Finanzamtsdaten.ods` (BZSt GEMFA data of 01.09.2026) | 2026-09 | verified (2026-11-20) |
+| Prüfziffer | The check digit is **not** computed by FreiBuch; ERiC checks it when a return is validated or sent (`ERIC_GLOBAL_STEUERNUMMER_UNGUELTIG`). The algorithm is in `Pruefung_der_Steuer_und_Steueridentifikatsnummer.pdf` (ELSTER developer area), not read. | `include/ericapi.h` (`EricPruefeSteuernummer`) | — | TODO: only needed for an offline check |
+| `<Ziel>` | The TransferHeader `<Ziel>` must be a `BundeslandSType` code: BB, BE, BW, BY, HB, HE, HH, MV, NI, NW, RP, SH, SL, SN, ST, TH. `_bundesland_ziel` maps the Länderschlüssel 01–16 **and** the 13-digit prefixes (5, 9, 21–41) the pre-built UI sends; before 2026-11-20 a prefix such as `9` was written as `<Ziel>9</Ziel>`. | ERiC-44.3 `ElsterBasisSchema/Schema/headerbasis_datentypen.xsd`, `th000011_extern.xsd` | — | verified (2026-11-20) |
+
 ## Anlage EÜR 2025 XML (datenartVersion `EUER_2025`, for EUR-4)
 
 Facts for the EÜR ELSTER builder (EUR-4). Names and formats only; the XSD and documentation stay in

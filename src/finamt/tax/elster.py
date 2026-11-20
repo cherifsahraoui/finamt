@@ -144,6 +144,24 @@ _BUNDESLAND_ZIEL: dict[str, str] = {
     "14": "SN",
     "15": "ST",
     "16": "TH",
+    # The pre-built UI sends the prefix of the 13-digit Steuernummer instead
+    # (Landesnummer, Finanzamtsdaten.ods). Map those too; no key collides with
+    # 01–16 except 10/11, which mean the same Land in both. <Ziel> must be a
+    # BundeslandSType code (headerbasis_datentypen.xsd). See docs/tax-rules.md.
+    "21": "SH",
+    "22": "HH",
+    "23": "NI",
+    "24": "HB",
+    "5": "NW",
+    "26": "HE",
+    "27": "RP",
+    "28": "BW",
+    "9": "BY",
+    "30": "BB",
+    "40": "MV",
+    "32": "SN",
+    "31": "ST",
+    "41": "TH",
     # also accept 2-letter values passed directly
 }
 
@@ -295,7 +313,7 @@ class SubmissionResult:
 #
 # Official conversion table (Bundesministerium der Finanzen):
 # Bundesland             Local format         Unified 13-digit
-# Baden-Württemberg      FF/BBB/UUUUP         28FF0BBBUUUUP
+# Baden-Württemberg      FFBBB/UUUUP          28FF0BBBUUUUP
 # Bayern                 FFF/BBB/UUUUP         9FFF0BBBUUUUP
 # Berlin                 FF/BBB/UUUUP         11FF0BBBUUUUP
 # Brandenburg            0FF/BBB/UUUUP        30FF0BBBUUUUP
