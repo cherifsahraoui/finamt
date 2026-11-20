@@ -127,6 +127,16 @@ Branch `baseline/fable-1`:
   served unchanged at `/legacy-ui` instead of `/`; unknown paths return 404 instead of the SPA.
   The bundle itself is not modified.
 
+### ERiC print PDF and EÜR in the UI (PRINT-1, EUR-9, 2026-11-20)
+- `src/finamt/tax/eric_wrapper.py` (upstream file): `make_druck_parameter()`; `bearbeite_vorgang`
+  passes print parameters (upstream always passed NULL).
+- `src/finamt/tax/elster.py` (upstream file): `ElsterEricClient.validate_ust` / `submit_ust` take
+  an optional `pdf_path`; a print error after an accepted send is reported as sent with a warning.
+- `src/finamt/ui/api.py` (upstream file): the UStVA / USt submit requests take `pdf`; the copy is
+  stored next to the XML and recorded as `pdf_filename`.
+- `src/finamt/tax/eur_elster.py`, `src/finamt/ui/web/`, `src/finamt/cli.py` (FreiBuch's own code):
+  print preview, EÜR check / XML / test send in the UI and CLI.
+
 ### Project folders without a database (bug fix, 2026-11-20)
 - `src/finamt/storage/project.py` (upstream file): `list_projects(with_db_only=True)` skips
   folders without `finamt.db`. Upstream's default (every folder) is unchanged, so the old UI

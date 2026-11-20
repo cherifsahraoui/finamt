@@ -25,7 +25,8 @@ leave it, except for the ELSTER submission itself.
 | Monthly or quarterly? (§ 18 Abs. 2 UStG) | ✅ hint from the prior year's tax | `finamt ustva --suggest-period --year Y` |
 | UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ validates in ERiC 44.3; test mode; live needs an explicit switch ([M2](docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](docs/MANUAL-STEPS.md#m4-file-for-real)) | web UI `/app/ustva` (`finamt serve`) or API |
 | EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works, VAT lines included (Kz 140/141/185/186) | `finamt eur --year Y`, web UI `/app/euer` |
-| EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
+| EÜR submission via ELSTER | 🧪 ERiC check, XML download and test send; live is switched off (D3); needs one owner test send (EUR-6) | web UI `/app/euer`, `finamt eur --validate / --xml` |
+| Official PDF (ERiC print) of UStVA, annual USt and EÜR | ✅ preview before sending; copy after a send stored in the archive (PRINT-1) | web UI "Druckansicht (PDF)", `finamt eur --pdf` |
 | Credit notes in the UStVA (negative base and tax lines) | ✅ works (UST-2) | — |
 | 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-3, UST-4) | — |
 | Writing invoices (§ 14 UStG), gapless numbers, PDF, cancellation | ✅ works (INV-1) | web UI `/app/rechnungen`, `finamt invoice new --file F.json` |

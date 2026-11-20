@@ -176,6 +176,16 @@ Labels shortened. Where the line number is given, it is the 2025 form line.
 | ERiC 44 API | `EricBearbeiteVorgang` takes 7 arguments; the transfer handle was removed. ERiC 44 libraries are not compatible with ERiC 43. | ERiC-44.3 `ERiC-Releasenotes.pdf` 5.2.6, 5.2.8; `include/ericapi.h` | ERiC 44+ | verified (2026-11-20); `eric_wrapper.py` adapted |
 | EÜR `datenartVersion` | `EUER_<year>` (from 2015; new Nutzdaten structure from 2021), e.g. `EUER_2025`. Verfahren `ElsterErklaerung`, DatenArt `EUER`. | ERiC-44.3 `Datenartversionmatrix.ods`; `Beispiele/EUER_2025_ok.xml` | 2025 | verified (2026-11-20) |
 
+## ERiC printing (PRINT-1, `eric_wrapper.make_druck_parameter`)
+
+| value | rule | legal source | year | status |
+|---|---|---|---|---|
+| print parameters | `eric_druck_parameter_t`: `version` must be **4**; `vorschau` 0/1; `duplexDruck` 0/1 (FreiBuch: 0); `pdfName` = path of the PDF, on Windows in the ANSI code page; `fussText` optional; `pdfCallback` NULL = ERiC writes the file. Other values return `ERIC_GLOBAL_UNGUELTIGE_PARAMETER_VERSION` / `ERIC_GLOBAL_UNGUELTIGER_PARAMETER`. | ERiC-44.3 API-Referenz, `eric_types.h` (struct `eric_druck_parameter_t`) | ERiC 44 | verified (2026-11-20) |
+| preview (EBV-2) | Flags `ERIC_VALIDIERE + ERIC_DRUCKE`, print parameters with `vorschau=1`, **no** crypto parameters: nothing is sent. The PDF is only written when validation succeeds; marked `*** Vorschau ***`, no send date or ticket. | Entwicklerhandbuch 44.3, Tabelle 6-2, 5.1.2.4.3, 5.1.5.6 | ERiC 44 | verified (2026-11-20); real ERiC run: UStVA Q1 2025, USt 2025, EÜR 2025 previews created |
+| copy after sending (EBV-6) | Flags `ERIC_VALIDIERE + ERIC_SENDE + ERIC_DRUCKE`, print **and** crypto parameters, `vorschau=0`. ERiC writes the PDF after the server accepted the data (step 5). Document type: UStVA (Anmeldungssteuer) → Übertragungsprotokoll "Für Ihre Unterlagen"; USt annual and EÜR (Erklärungssteuern from VZ 2022) → Freizeichnungsdokument; both with send date and transfer ticket. | Entwicklerhandbuch 44.3, Tabelle 6-2, 6-3, 5.1.2.6, 5.1.4.3, 5.1.4.4 | ERiC 44 | verified (2026-11-20); a real send still needs the owner (M1–M2) |
+| print error after send | ERiC aborts with an error when the PDF can't be written, although the data was already sent in step 4. FreiBuch: if a PDF was requested and the server answer holds a Telenummer, the result is "sent" with a warning (`elster._sent_despite_print_error`). | Entwicklerhandbuch 44.3, 5.1.2.5–5.1.2.6; API-Referenz `pdfName` ("wird die Bearbeitung abgebrochen") | ERiC 44 | verified (2026-11-20); behaviour chosen to avoid a double filing |
+| Testmerker on prints | Every page shows `*** Testfall ***` in red. | Entwicklerhandbuch 44.3, 5.1.5.7 | ERiC 44 | verified (2026-11-20) |
+
 ## Steuernummer and Land codes (`tax/bundesland.py`, `elster.normalise_steuernummer`, `elster._bundesland_ziel`)
 
 | value | rule | legal source | year | status |

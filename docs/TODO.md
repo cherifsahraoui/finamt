@@ -60,8 +60,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 34 | UI-9 | Uploads as a background job; progress on every page; one at a time | S | done (2026-11-20) | owner bug report |
 | 35 | UI-10 | Language switch DE/EN for `/app` | M | done (2026-11-20) | owner request |
 | 36 | INV-2 | Verify the § 19 invoice note (§ 34a UStDV) and the invoice VAT rounding source | S | ready | — |
-| 37 | PRINT-1 | Official print PDF (ERiC) for UStVA, annual USt and EÜR, kept in the archive | M | ready | — |
-| 38 | EUR-9 | EÜR: ERiC check, XML download and test send from the web UI and CLI | M | ready | — |
+| 37 | PRINT-1 | Official print PDF (ERiC) for UStVA, annual USt and EÜR, kept in the archive | M | done (2026-11-20) | — |
+| 38 | EUR-9 | EÜR: ERiC check, XML download and test send from the web UI and CLI | M | done (2026-11-20) | — |
 
 ---
 
@@ -280,7 +280,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### PRINT-1: official print PDF for UStVA, annual USt and EÜR
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
+- **Result**: rules verified from the ERiC 44.3 docs (tax-rules.md "ERiC printing"). `pdf_path` on `ElsterEricClient.validate_ust/submit_ust` and `eur_elster.eric_validate/submit`; `api.py` field `pdf` (preview to a temp file, or the copy in `submitted_returns/` recorded as `pdf_filename`); buttons on `/app/ustva` and `/app/euer`; `finamt eur --pdf`. Real ERiC run: previews for UStVA, USt and EÜR 2025 (dummy Hersteller-ID, nothing sent). The copy after a real send is untested until M1–M2.
 - **Goal**: a human-readable copy of every return in the official ELSTER layout, without any
   template file in the repo: ERiC renders it. Today the archive (`/app/archiv`) keeps only the
   sent XML.
@@ -309,7 +310,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-9: EÜR check, XML download and test send from the web UI and CLI
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
+- **Result**: "An ELSTER" section on `/app/euer` (check, XML, preview, test send; no live), `finamt eur --xml / --validate / --pdf`. ERiC path: `ERIC_LIBRARY_PATH`, else Stammdaten (`eur_elster` got an optional `eric_home`).
 - **Goal**: the Anlage EÜR XML builder (EUR-4) is only reachable from Python
   (`finamt.tax.eur_elster`). Give it the same buttons the UStVA has.
 - **Steps**:

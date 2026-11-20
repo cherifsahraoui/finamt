@@ -47,7 +47,7 @@ Finanzamt; owner step M2). `private/`
 | `finamt batch --input-dir DIR` | Extract all PDFs in a directory. |
 | `finamt ustva --quarter Q --year Y [--input-dir DIR] [--output F]` | Print/write a quarterly UStVA report (JSON). No ELSTER submission. |
 | `finamt ustva --month M` / `--suggest-period --year Y` | Monthly UStVA; monthly/quarterly hint from the prior year's tax (CLI-1). |
-| `finamt eur --year Y [--kleinunternehmer]` | EÜR summary; exit code 1 while receipts need review (CLI-1). |
+| `finamt eur --year Y [--kleinunternehmer] [--xml F] [--validate] [--pdf F]` | EÜR summary; exit code 1 while receipts need review (CLI-1). `--xml` / `--validate` / `--pdf`: Anlage EÜR XML, ERiC check, ERiC print preview (EUR-9, PRINT-1); need `--art-des-betriebs` and `--grundstuecke ja|nein`. |
 | `finamt invoice new --file F.json` / `list` / `cancel NUMBER` | Outgoing invoices (INV-1). |
 | `finamt serve [--port 8000]` | Start the web UI (`ui/server.py` → `ui/api.py`); `/` redirects to `/app`. |
 
