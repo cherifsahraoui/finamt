@@ -486,9 +486,14 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
             kz["Kz35"] = whole(prev_net + ln.sale_net)
             kz["Kz36"] = cents(prev_tax + ln.sale_vat)
 
-    # Input tax (Vorsteuer) — all rates combined in Kz 66
-    if report.total_input_vat > 0:
-        kz["Kz66"] = cents(report.total_input_vat)
+    # Input tax from invoices (§ 15 Abs. 1 S. 1 Nr. 1 UStG) — all rates in Kz 66.
+    # Import VAT (§ 15 Abs. 1 S. 1 Nr. 2 UStG) has its own line, Kz 62
+    # (USt1A-2026 section F; see docs/tax-rules.md).
+    invoice_input_vat = sum((ln.purchase_vat for ln in report.lines.values()), Decimal("0"))
+    if invoice_input_vat > 0:
+        kz["Kz66"] = cents(invoice_input_vat)
+    if report.einfuhr_vat > 0:
+        kz["Kz62"] = cents(report.einfuhr_vat)
 
     # Net VAT balance — Kz83 is mandatory whenever there is any reportable
     # VAT activity. For a genuinely empty report (no turnover, no input tax)

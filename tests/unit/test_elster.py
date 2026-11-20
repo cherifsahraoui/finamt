@@ -35,7 +35,7 @@ from finamt.tax.elster import (
     bundesland_kz_from_city,
     normalise_steuernummer,
 )
-from finamt.tax.ustva import generate_ustva
+from finamt.tax.ustva import USTVAReport, generate_ustva
 
 try:
     from lxml import etree as ET
@@ -195,6 +195,22 @@ class TestUstvaKennzahlen:
         kz = _ustva_kennzahlen(report)
         assert "Kz66" in kz
         assert Decimal(kz["Kz66"]) == Decimal("19.00")
+
+    def test_import_vat_only_goes_to_kz62(self):
+        report = USTVAReport(period_start=Q1_S, period_end=Q1_E, einfuhr_vat=Decimal("50.00"))
+        kz = _ustva_kennzahlen(report)
+        assert kz == {"Kz62": "50.00", "Kz83": "-50.00"}
+
+    def test_import_vat_not_in_kz66(self):
+        receipts = [_receipt(vat_amount="19.00", vat_percentage="19")]
+        report = generate_ustva(receipts, Q1_S, Q1_E)
+        report.einfuhr_vat = Decimal("50.00")
+        kz = _ustva_kennzahlen(report)
+        assert kz["Kz66"] == "19.00"
+        assert kz["Kz62"] == "50.00"
+        # Kz 83 = output − (Kz 66 + Kz 62), same value as before the split
+        assert kz["Kz83"] == "-69.00"
+        assert Decimal(kz["Kz83"]) == -report.total_input_vat
 
     def test_single_sale_19pct_gets_kz81(self):
         receipts = [
