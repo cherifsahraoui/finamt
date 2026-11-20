@@ -390,7 +390,7 @@ def _elster_request_fields(layout) -> tuple[dict, str | None]:
     tp = h.get_meta(layout, h.TAXPAYER_KEY)
     misc = h.get_meta(layout, h.ELSTER_MISC_KEY)
     land = bundesland_by_name(tp.get("state"))
-    info = steuernummer_info(tp.get("tax_number"), land)
+    info = h.steuernummer_fuer(tp, "ust")  # UStVA and USt use the Umsatzsteuer number
     if info.fehler:
         return {}, f"Stammdaten unvollständig: {info.fehler}"
     return {
@@ -487,7 +487,14 @@ def euer(request: Request, projekt: str | None = None, jahr: int | None = None):
         if zeile and zeile.zu_pruefen:
             zu_pruefen.append((r, zeile))
     return _render(
-        request, "euer.html", layout, "euer", report=report, jahr=jahr, zu_pruefen=zu_pruefen
+        request,
+        "euer.html",
+        layout,
+        "euer",
+        report=report,
+        jahr=jahr,
+        zu_pruefen=zu_pruefen,
+        stnr=h.steuernummer_fuer(h.get_meta(layout, h.TAXPAYER_KEY), "euer"),
     )
 
 
@@ -528,7 +535,12 @@ def _stammdaten_context(layout) -> dict:
         "land": land,
         "land_unbekannt": tp.get("state") if tp.get("state") and land is None else None,
         "laender": BUNDESLAENDER,
-        "info": steuernummer_info(tp.get("tax_number"), land) if tp else None,
+        "info": h.steuernummer_fuer(tp, "ust") if tp.get("tax_number") else None,
+        "info_est": h.steuernummer_fuer(tp, "est") if tp.get("tax_number_est") else None,
+        "art": "",
+        "zwei_nummern": bool((tp.get("tax_number_est") or "").strip()),
+        "euer_wahl": tp.get("euer_steuernummer") or "",
+        "euer_wahlen": h.EUER_WAHL,
         "hersteller_id": misc.get("hersteller_id") or "",
         "pin_gespeichert": bool(misc.get("cert_pin")),
         "cert_gespeichert": (layout.root / h.CERT_FILENAME).exists(),
@@ -551,10 +563,13 @@ def stammdaten(request: Request, projekt: str | None = None, gespeichert: str = 
 
 
 @router.get("/stammdaten/steuernummer", response_class=HTMLResponse)
-def stammdaten_steuernummer(request: Request, state: str = "", tax_number: str = ""):
-    """htmx partial: the computed ELSTER numbers for the current form values."""
-    info = steuernummer_info(tax_number, bundesland_by_name(state)) if tax_number else None
-    return templates.TemplateResponse(request, "_steuernummer.html", {"info": info})
+def stammdaten_steuernummer(
+    request: Request, state: str = "", tax_number: str = "", tax_number_est: str = "", art: str = ""
+):
+    """htmx partial: the computed ELSTER numbers for one Steuernummer field (``art=est``: ESt)."""
+    nr = tax_number_est if art == "est" else tax_number
+    info = steuernummer_info(nr, bundesland_by_name(state)) if nr.strip() else None
+    return templates.TemplateResponse(request, "_steuernummer.html", {"info": info, "art": art})
 
 
 @router.post("/stammdaten/steuerpflichtiger")
@@ -567,6 +582,8 @@ def stammdaten_speichern(
     city: str = Form(""),
     state: str = Form(""),
     tax_number: str = Form(""),
+    tax_number_est: str = Form(""),
+    euer_steuernummer: str = Form(""),
     vat_id: str = Form(""),
     rechtsform: str = Form("Freiberuflich"),
 ):
@@ -583,7 +600,9 @@ def stammdaten_speichern(
                 "postcode": postcode.strip(),
                 "city": city.strip(),
                 "state": land.name if land else "",
-                "tax_number": tax_number.strip(),
+                "tax_number": tax_number.strip(),  # Umsatzsteuer (old UI uses it for UStVA)
+                "tax_number_est": tax_number_est.strip(),  # Einkommensteuer; empty = same
+                "euer_steuernummer": euer_steuernummer if euer_steuernummer in h.EUER_WAHL else "",
                 "vat_id": vat_id.strip().upper().replace(" ", ""),
                 "rechtsform": rechtsform.strip() or "Freiberuflich",
             }

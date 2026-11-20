@@ -577,3 +577,86 @@ class TestStammdaten:
         )
         html = _get(client, "/app").text
         assert "monatlich, mit Dauerfristverlängerung" in html
+
+
+# ---------------------------------------------------------------------------
+# Two Steuernummern (Umsatzsteuer / Einkommensteuer)
+# ---------------------------------------------------------------------------
+
+UST_NR, UST_13 = "198/113/10010", "9198011310010"
+EST_NR, EST_13 = "101/123/45677", "9101012345677"  # ERiC-confirmed (test_bundesland.py)
+
+
+class TestZweiSteuernummern:
+    def test_one_number_is_used_for_everything(self):
+        tp = {"state": "Bayern", "tax_number": UST_NR}
+        for zweck in ("ust", "est", "euer"):
+            assert h.steuernummer_fuer(tp, zweck).elster13 == UST_13
+
+    def test_two_numbers_need_an_euer_choice(self):
+        tp = {"state": "Bayern", "tax_number": UST_NR, "tax_number_est": EST_NR}
+        assert h.steuernummer_fuer(tp, "ust").elster13 == UST_13
+        assert h.steuernummer_fuer(tp, "est").elster13 == EST_13
+        assert "festlegen" in h.steuernummer_fuer(tp, "euer").fehler
+        assert h.steuernummer_fuer({**tp, "euer_steuernummer": "est"}, "euer").elster13 == EST_13
+        assert h.steuernummer_fuer({**tp, "euer_steuernummer": "ust"}, "euer").elster13 == UST_13
+
+    def test_same_number_twice_needs_no_choice(self):
+        tp = {"state": "Bayern", "tax_number": UST_NR, "tax_number_est": UST_13}
+        assert h.steuernummer_fuer(tp, "euer").elster13 == UST_13
+
+    def test_stammdaten_save_and_show_both(self, client):
+        resp = client.post(
+            "/app/stammdaten/steuerpflichtiger",
+            params={"projekt": PROJEKT},
+            data={**TEST_TAXPAYER, "tax_number_est": EST_NR, "euer_steuernummer": "est"},
+        )
+        assert UST_13 in resp.text and EST_13 in resp.text
+        assert "Bitte auswählen" not in resp.text
+        tp = h.get_meta(_layout(), "taxpayer")
+        assert (tp["tax_number"], tp["tax_number_est"], tp["euer_steuernummer"]) == (
+            UST_NR,
+            EST_NR,
+            "est",
+        )
+        # The old UI keeps reading the Umsatzsteuer number for UStVA
+        old = client.get("/taxpayer", params={"db": str(_layout().db_path)}).json()["taxpayer"]
+        assert old["tax_number"] == UST_NR
+
+    def test_missing_choice_is_flagged(self, client):
+        _set_meta("taxpayer", {**TEST_TAXPAYER, "tax_number_est": EST_NR})
+        assert "Bitte auswählen" in _get(client, "/app/stammdaten").text
+        euer = _get(client, "/app/euer", jahr=2025).text
+        assert "festlegen" in euer
+
+    def test_euer_page_shows_chosen_number(self, client):
+        _set_meta(
+            "taxpayer", {**TEST_TAXPAYER, "tax_number_est": EST_NR, "euer_steuernummer": "est"}
+        )
+        assert EST_13 in _get(client, "/app/euer", jahr=2025).text
+
+    def test_ustva_sends_the_umsatzsteuer_number(self, client, monkeypatch):
+        import finamt.ui.api as api
+
+        _set_meta(
+            "taxpayer", {**TEST_TAXPAYER, "tax_number_est": EST_NR, "euer_steuernummer": "est"}
+        )
+        seen = {}
+        monkeypatch.setattr(
+            api, "post_ustva_submit", lambda body, db=None: seen.update(b=body) or {"success": 1}
+        )
+        client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2026", "zeitraum": "q1", "aktion": "pruefen"},
+        )
+        assert seen["b"].steuernummer == UST_13
+
+    def test_partial_for_est_field(self, client):
+        empty = client.get("/app/stammdaten/steuernummer", params={"state": "Bayern", "art": "est"})
+        assert "Umsatzsteuer-Nummer gilt für alles" in empty.text
+        ok = client.get(
+            "/app/stammdaten/steuernummer",
+            params={"state": "Bayern", "tax_number_est": EST_NR, "art": "est"},
+        )
+        assert EST_13 in ok.text

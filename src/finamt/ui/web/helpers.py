@@ -19,6 +19,7 @@ from decimal import Decimal, InvalidOperation
 from finamt.models import ReceiptData
 from finamt.storage import project as _project
 from finamt.storage.sqlite import SQLiteRepository
+from finamt.tax.bundesland import SteuernummerInfo, bundesland_by_name, steuernummer_info
 from finamt.tax.eur import REVIEW, generate_eur
 
 MONATE = (
@@ -62,6 +63,40 @@ def open_repo(layout: _project.ProjectLayout, *, create: bool = False) -> Iterat
         layout.create_dirs()
     with SQLiteRepository(db_path=layout.db_path) as repo:
         yield repo
+
+
+EUER_WAHL = {"est": "Einkommensteuer-Nummer", "ust": "Umsatzsteuer-Nummer"}
+
+
+def steuernummer_fuer(tp: dict, zweck: str) -> SteuernummerInfo:
+    """The Steuernummer to use for ``zweck``: ``"ust"`` (UStVA, USt), ``"est"`` or ``"euer"``.
+
+    Profile keys: ``tax_number`` (Umsatzsteuer; the old UI uses it for UStVA/USt),
+    ``tax_number_est`` (Einkommensteuer, optional: empty = the same number for everything),
+    ``euer_steuernummer`` (``"est"``/``"ust"``: which one the Anlage EÜR is filed under).
+    With two different numbers the EÜR choice is the owner's: the official sources read so far
+    don't say which one (docs/tax-rules.md, row "two Steuernummern").
+    """
+    land = bundesland_by_name(tp.get("state"))
+    ust = steuernummer_info(tp.get("tax_number"), land)
+    if zweck == "ust" or not (tp.get("tax_number_est") or "").strip():
+        return ust
+    est = steuernummer_info(tp.get("tax_number_est"), land)
+    if zweck == "est":
+        return est
+    if est.elster13 and est.elster13 == ust.elster13:
+        return est
+    wahl = tp.get("euer_steuernummer")
+    if wahl == "est":
+        return est
+    if wahl == "ust":
+        return ust
+    return SteuernummerInfo(
+        fehler=(
+            "Zwei Steuernummern eingetragen: in den Stammdaten festlegen, "
+            "unter welcher die Anlage EÜR abgegeben wird."
+        )
+    )
 
 
 def get_meta(layout: _project.ProjectLayout, key: str) -> dict:

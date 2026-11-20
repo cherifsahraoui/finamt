@@ -11,6 +11,11 @@
 </form>
 
 {% for w in report.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
+{% if stnr.fehler %}
+<div class="notice warn">Steuernummer für die Anlage EÜR: {{ stnr.fehler }} <a href="{{ href('/stammdaten') }}">Stammdaten öffnen</a></div>
+{% else %}
+<p class="hint">Abgabe unter Steuernummer <span class="mono">{{ stnr.elster13 }}</span> (Finanzamt {{ stnr.finanzamt_nr }}).</p>
+{% endif %}
 
 <div class="split">
   <section class="card">

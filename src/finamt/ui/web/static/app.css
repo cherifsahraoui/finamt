@@ -91,6 +91,9 @@ button.danger { background: var(--bg); color: var(--err); border-color: var(--er
 button.danger:hover { background: var(--err); color: var(--bg); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-bottom: 12px; }
 .grid .wide { grid-column: 1 / -1; }
+.sub { border-left: 2px solid var(--amber-300); padding-left: 10px; }
+fieldset.sub { border-top: 0; border-right: 0; border-bottom: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+fieldset.sub legend { font-size: 11px; color: var(--fg-70); padding: 0; }
 .stack { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .row select { width: auto; }

@@ -1,5 +1,5 @@
 {% if info is none %}
-<p class="hint">Bundesland und Steuernummer eintragen; die ELSTER-Werte werden dann berechnet.</p>
+<p class="hint">{% if art == "est" %}Leer: die Umsatzsteuer-Nummer gilt für alles.{% else %}Bundesland und Steuernummer eintragen; die ELSTER-Werte werden dann berechnet.{% endif %}</p>
 {% elif info.fehler %}
 <p class="field-error" role="alert">{{ info.fehler }}</p>
 {% else %}

@@ -16,15 +16,39 @@
     <label>PLZ <input name="postcode" value="{{ tp.postcode or '' }}" inputmode="numeric" class="short" autocomplete="postal-code"></label>
     <label>Ort <input name="city" value="{{ tp.city or '' }}" autocomplete="address-level2"></label>
     <label>Bundesland
-      <select name="state" required
-              hx-get="/app/stammdaten/steuernummer" hx-trigger="change" hx-target="#stnr" hx-include="[name=tax_number]">
+      <select name="state" id="state" required>
         <option value="">— bitte wählen —</option>
         {% for b in laender %}<option value="{{ b.name }}" {% if land and land.name == b.name %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
       </select>
     </label>
-    <label>Steuernummer <input name="tax_number" value="{{ tp.tax_number or '' }}" class="mono" placeholder="wie auf dem Steuerbescheid, z. B. 198/113/10010"
-              hx-get="/app/stammdaten/steuernummer" hx-trigger="keyup changed delay:400ms, change" hx-target="#stnr" hx-include="[name=state]"></label>
-    <div class="wide" id="stnr" aria-live="polite">{% include "_steuernummer.html" %}</div>
+    <div class="wide sub">
+      <label>Steuernummer für die Umsatzsteuer <input name="tax_number" id="tax_number" value="{{ tp.tax_number or '' }}" class="mono"
+        placeholder="wie auf dem Bescheid, z. B. 198/113/10010">
+        <span class="hint">Für UStVA und Umsatzsteuer-Erklärung. Wer nur eine Steuernummer hat, trägt sie hier ein.</span></label>
+      <div id="stnr" aria-live="polite"
+           hx-get="/app/stammdaten/steuernummer" hx-include="#state,#tax_number"
+           hx-trigger="change from:#state, change from:#tax_number, keyup changed delay:400ms from:#tax_number">
+        {% include "_steuernummer.html" %}
+      </div>
+    </div>
+    <div class="wide sub">
+      <label>Steuernummer für die Einkommensteuer (falls eine andere) <input name="tax_number_est" id="tax_number_est" value="{{ tp.tax_number_est or '' }}" class="mono"
+        placeholder="leer = dieselbe Nummer">
+        <span class="hint">Manche Finanzämter vergeben eine eigene Nummer für die Umsatzsteuer.</span></label>
+      <div id="stnr_est" aria-live="polite"
+           hx-get="/app/stammdaten/steuernummer" hx-include="#state,#tax_number_est" hx-vals='{"art": "est"}'
+           hx-trigger="change from:#state, change from:#tax_number_est, keyup changed delay:400ms from:#tax_number_est">
+        {% with info = info_est, art = "est" %}{% include "_steuernummer.html" %}{% endwith %}
+      </div>
+    </div>
+    <fieldset class="wide sub">
+      <legend>Anlage EÜR abgeben unter</legend>
+      {% for k, v in euer_wahlen.items() %}
+      <label class="check"><input type="radio" name="euer_steuernummer" value="{{ k }}" {% if euer_wahl == k %}checked{% endif %}> {{ v }}</label>
+      {% endfor %}
+      <p class="hint">Nur nötig bei zwei verschiedenen Nummern. Welche gilt, steht im Schreiben des Finanzamts zur Vergabe der Nummern; im Zweifel dort nachfragen.</p>
+      {% if zwei_nummern and not euer_wahl %}<p class="field-error">Bitte auswählen.</p>{% endif %}
+    </fieldset>
     <label>USt-IdNr. (optional) <input name="vat_id" value="{{ tp.vat_id or '' }}" class="mono" placeholder="DE123456789"></label>
     <label>Rechtsform
       <select name="rechtsform">
