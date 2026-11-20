@@ -1,1 +1,3 @@
 recursive-include src/finamt/ui/static *
+recursive-include src/finamt/ui/web/templates *
+recursive-include src/finamt/ui/web/static *
