@@ -118,6 +118,21 @@ Branch `baseline/fable-1`:
   `total_betriebseinnahmen`, `total_betriebsausgaben`; the summary drops the net-method warning.
 - `src/finamt/ui/web/templates/euer.html`: shows Kz 140/185 and the totals including VAT.
 
+### Web UI: background uploads, language switch, UI-8, invoices, start page (2026-11-20)
+- `src/finamt/ui/web/` (FreiBuch's own code): uploads run as one background job whose progress
+  stays on every page (owner bug report); DE/EN switch (`i18n.py`); manual entry, projects,
+  partners, XML download and an archive page (UI-8); invoices page (UI-5); Kleinunternehmer
+  years in Stammdaten (EUR-8).
+- `src/finamt/ui/api.py` (upstream file, UI-6): `/` redirects to `/app`; the upstream bundle is
+  served unchanged at `/legacy-ui` instead of `/`; unknown paths return 404 instead of the SPA.
+  The bundle itself is not modified.
+
+### Outgoing invoices (task INV-1, 2026-11-20)
+- New package `src/finamt/invoicing/` and CLI group `finamt invoice` (FreiBuch's own code).
+- `src/finamt/storage/sqlite.py` (upstream file): new tables `invoice_sequence` and `invoices`
+  (in-place migration) and the methods `create_invoice`, `get_invoice`, `list_invoices`,
+  `set_invoice_receipt`, `invoice_corrected_by`.
+
 ### CLI: EÜR, monthly UStVA, filing-period hint (task CLI-1, 2026-11-20)
 - `src/finamt/cli.py`: new command `finamt eur` (exit code 1 while receipts need review);
   `finamt ustva` gained `--month` and `--suggest-period`. Upstream's `--quarter` default (1) is

@@ -24,9 +24,10 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `tax/safety.py` | Live-submission gate (`FINAMT_ALLOW_LIVE_SUBMISSION`). |
 | `tax/bundesland.py` | The 16 Länder in one place (name, ELSTER `<Ziel>` code, Länderschlüssel 01–16, Landesnummern) and `steuernummer_info()` (13-digit ELSTER number + Finanzamtsnr., or a German error). |
 | `ui/api.py` | FastAPI backend for the old web UI; calls `ui.web.register(app)` before the SPA catch-all. |
-| `ui/web/` | FreiBuch's own UI under `/app` (D2): `routes.py` (pages; sending calls `post_ustva_submit` / `post_uste_submit` in-process so the live gate stays in one place), `helpers.py` (projects via `?projekt=`, German formats, periods and UStVA deadlines, `eur_zeile()` per receipt), `templates/` (Jinja2), `static/` (`app.css`, vendored `htmx.min.js`). Stores data under the old UI's metadata keys (`taxpayer`, `elster_misc`, `elster_eric_home`, `submissions`) plus `freibuch_settings` (UStVA period, Dauerfristverlängerung). Taxpayer profile: `tax_number` is the Umsatzsteuer number (UStVA, USt; the old UI uses it too), optional `tax_number_est` the Einkommensteuer number, `euer_steuernummer` (`est`/`ust`) the number for the Anlage EÜR; `helpers.steuernummer_fuer(tp, zweck)` picks the right one. |
+| `ui/web/` | FreiBuch's own UI under `/app` (D2): `routes.py` (pages; sending calls `post_ustva_submit` / `post_uste_submit` in-process so the live gate stays in one place), `helpers.py` (projects via `?projekt=`, German formats, periods and UStVA deadlines, `eur_zeile()` per receipt), `templates/` (Jinja2), `static/` (`app.css`, vendored `htmx.min.js`). Stores data under the old UI's metadata keys (`taxpayer`, `elster_misc`, `elster_eric_home`, `submissions`) plus `freibuch_settings` (UStVA period, Dauerfristverlängerung, `kleinunternehmer_jahre`). `uploads.py`: one background upload job at a time (in memory), shown on every page by `_upload_status.html` (htmx poll). `i18n.py`: `_()` with German keys and an English dictionary, language in the `freibuch_lang` cookie. Pages: Übersicht, Belege (+ manual entry), UStVA (+ XML download), EÜR, Rechnungen, Partner, Archiv, Projekte, Stammdaten. Taxpayer profile: `tax_number` is the Umsatzsteuer number (UStVA, USt; the old UI uses it too), optional `tax_number_est` the Einkommensteuer number, `euer_steuernummer` (`est`/`ust`) the number for the Anlage EÜR; `helpers.steuernummer_fuer(tp, zweck)` picks the right one. |
 | `ui/server.py` | Uvicorn launcher (`finamt serve`). |
-| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2 (never edited); covers receipts + UStVA/USt, no EÜR. Still served at `/` until UI-6. |
+| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2 (never edited). Served at `/legacy-ui` since UI-6 (no client-side router, so the path doesn't matter; its assets stay at `/assets/…`); deleted in CLN-5. |
+| `invoicing/` | Outgoing invoices (INV-1): `model.py` (Invoice, per-rate totals, § 14 field check), `numbering.py` (`YYYY-NNNN`), `render.py` (PDF, PyMuPDF with embedded Helvetica for €/–), `service.py` (`issue_invoice` → number, PDF, sale receipt; `cancel_invoice` → Rechnungskorrektur). Numbers come from `SQLiteRepository.create_invoice` (tables `invoice_sequence`, `invoices`; number and row in one `BEGIN IMMEDIATE` transaction). |
 | `utils.py`, `progress.py`, `exceptions.py` | Parsing helpers, SSE progress events, exception types. |
 
 Outside the package: `scripts/ustva_test_submission.py` and `scripts/eur_test_submission.py` run a
@@ -45,9 +46,10 @@ Finanzamt; owner step M2). `private/`
 | `finamt process FILE --input-dir DIR` | Extract one PDF (OCR + LLM), save to DB. |
 | `finamt batch --input-dir DIR` | Extract all PDFs in a directory. |
 | `finamt ustva --quarter Q --year Y [--input-dir DIR] [--output F]` | Print/write a quarterly UStVA report (JSON). No ELSTER submission. |
-| `finamt serve [--port 8000]` | Start the web UI (`ui/server.py` → `ui/api.py`). |
-
-There is no CLI command for EÜR or monthly UStVA yet (see `docs/TODO.md`).
+| `finamt ustva --month M` / `--suggest-period --year Y` | Monthly UStVA; monthly/quarterly hint from the prior year's tax (CLI-1). |
+| `finamt eur --year Y [--kleinunternehmer]` | EÜR summary; exit code 1 while receipts need review (CLI-1). |
+| `finamt invoice new --file F.json` / `list` / `cancel NUMBER` | Outgoing invoices (INV-1). |
+| `finamt serve [--port 8000]` | Start the web UI (`ui/server.py` → `ui/api.py`); `/` redirects to `/app`. |
 
 ### HTTP API (`src/finamt/ui/api.py`)
 
@@ -117,7 +119,8 @@ uv run finamt --help                      # CLI
 ## Known gaps (details in `docs/TODO.md`)
 
 - EÜR ELSTER XML (Kennzahlen not verified), EÜR CLI/API.
-- EÜR: Kleinunternehmer mode exists in `generate_eur` but is not wired to Stammdaten/UI (EUR-8); assets > 800 € go to review (EUR-3).
+- EÜR: assets > 800 € go to review (EUR-3).
 - UStVA ignores receipts with zero/no VAT (0 % / reverse-charge sales) and rate `unknown`.
 - `vat_splits` (mixed-rate receipts) are stored but not used by tax code.
-- No invoice generation, no ZM, no reverse-charge flag.
+- No ZM, no reverse-charge flag (so no reverse-charge invoice note yet).
+- Upload jobs live in memory: a server restart drops an unfinished job (saved receipts stay).

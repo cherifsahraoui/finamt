@@ -28,9 +28,9 @@ leave it, except for the ELSTER submission itself.
 | EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
 | Credit notes in the UStVA (negative base and tax lines) | ✅ works (UST-2) | — |
 | 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-3, UST-4) | — |
-| Writing invoices (§ 14 UStG) | ⛔ not yet (INV-1) | — |
+| Writing invoices (§ 14 UStG), gapless numbers, PDF, cancellation | ✅ works (INV-1) | web UI `/app/rechnungen`, `finamt invoice new --file F.json` |
 | Zusammenfassende Meldung for EU clients | ⛔ not yet (ZM-1) | — |
-| Kleinunternehmer (§ 19 UStG) mode | 🧪 EÜR calculation only (`generate_eur(..., kleinunternehmer=True)`); setting in Stammdaten planned (EUR-8) | Python API |
+| Kleinunternehmer (§ 19 UStG) mode | ✅ EÜR and invoices; years set in Stammdaten (EUR-8) | web UI, `finamt eur --kleinunternehmer` |
 
 Out of scope: KSt, GewSt, E-Bilanz, Jahresabschluss, Einkommensteuer. The upstream code for
 these lives in [`legacy/`](legacy/README.md) and is not installed.
@@ -41,10 +41,8 @@ The work is split into small tasks that an AI agent (or a person) can pick up on
 The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The next steps:
 
 1. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
-2. **INV-1**: outgoing invoices with gapless numbering
-3. **ZM-1**: Zusammenfassende Meldung
-4. **EUR-8**: Kleinunternehmer setting per year in Stammdaten
-5. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
+2. **ZM-1**: Zusammenfassende Meldung
+3. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
 
 Decisions that shape the project (CLI first, no live filing by default, …) are in
 [docs/DECISIONS.md](docs/DECISIONS.md).
@@ -88,6 +86,13 @@ On first use, OCR and LLM models are downloaded from HuggingFace (about 4 GB, ca
    finamt eur --year 2025 --output eur_2025.json      # add --kleinunternehmer under § 19 UStG
    ```
    The command exits with code 1 while anything is still under ZU PRÜFEN.
+5. **Invoices** from the web UI (Rechnungen) or the CLI; the next number (`2025-0001`, …) is
+   assigned on creation, the PDF is stored as a sale receipt:
+   ```bash
+   finamt invoice new --file rechnung.json   # customer, dates, lines; supplier from Stammdaten
+   finamt invoice list --year 2025
+   finamt invoice cancel 2025-0001            # Rechnungskorrektur with its own number
+   ```
    Anything FreiBuch can't classify safely (assets over 800 €, meals, gifts, donations, tax
    payments, private deposits/withdrawals) appears under **ZU PRÜFEN** and is *not* counted until
    you decide. Until EÜR submission exists, copy the Kennzahlen into ELSTER by hand.
@@ -151,20 +156,23 @@ ERiC itself goes into the git-ignored `private/` folder. Use the **Windows x86-6
 
 ## About the web UI
 
-`finamt serve` starts two UIs on the same server ([decision D2](docs/DECISIONS.md)):
+`finamt serve` opens **FreiBuch's own UI** at `http://127.0.0.1:8000/` (it lives under `/app`,
+[decision D2](docs/DECISIONS.md)); German by default, English with the DE/EN switch in the sidebar:
 
-- **`http://127.0.0.1:8000/app`: FreiBuch's own UI.** Übersicht (next UStVA deadline, receipts to
-  review), Belege (upload, edit, delete, the EÜR line of each receipt), UStVA and annual USt
-  (Kennzahlen, ERiC check, test send; live only with `FINAMT_ALLOW_LIVE_SUBMISSION=1`), EÜR with the
-  "zu prüfen" list, and Stammdaten with a Bundesland dropdown that computes the 13-digit ELSTER
-  Steuernummer. Server-rendered, no build step (`src/finamt/ui/web/`).
-- **`http://127.0.0.1:8000/`: the upstream UI**, a compiled bundle whose source is not published, so
-  this fork doesn't change it. It still has a few things the new UI lacks (manual entry without a
-  file, project management, partner list, XML download). Both UIs read and write the same data.
-  Set Rechtsform to *Freiberuflich* there so the corporate-only pages stay hidden.
+- **Übersicht**: next UStVA deadline, receipts to review.
+- **Belege**: upload (read in the background; the progress stays visible on every page and a
+  second upload waits until the first is done), manual entry without a file, edit, delete, the
+  EÜR line of each receipt.
+- **UStVA** and annual USt: Kennzahlen, ERiC check, test send, XML download; live only with
+  `FINAMT_ALLOW_LIVE_SUBMISSION=1`.
+- **EÜR** with the "zu prüfen" list; **Rechnungen** (create, PDF, cancel); **Partner** (rename,
+  verify, merge); **Archiv** (submitted returns, own copy, Bescheid); **Projekte**.
+- **Stammdaten**: Bundesland dropdown that computes the 13-digit ELSTER Steuernummer, filing
+  period, Kleinunternehmer years, ELSTER certificate.
 
-Invoices come with INV-1. The old UI is retired once the new one covers the rest (UI-6 in
-[docs/TODO.md](docs/TODO.md)).
+Server-rendered, no build step (`src/finamt/ui/web/`). The upstream UI (a compiled bundle whose
+source is not published) stays reachable at `/legacy-ui` for one release; both read and write the
+same data.
 
 ## For contributors and AI agents
 

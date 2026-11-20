@@ -31,7 +31,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | done (2026-11-20) | — |
 | 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | **ready** | UST-2 (done) |
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | ready | UST-2 (done) |
-| 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | ready | — |
+| 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | done (2026-11-20) | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 (done) |
@@ -47,16 +47,19 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 21 | UI-2 | UI: receipt upload, edit, review warnings | M | done (2026-11-20) | — |
 | 22 | UI-3 | UI: UStVA / USt preview, validate, test, live | M | done (2026-11-20) | figures improve with UST-2 |
 | 23 | UI-4 | UI: EÜR year view with "ZU PRÜFEN" list | S | done (2026-11-20) | VAT lines come with EUR-2 |
-| 24 | UI-5 | UI: invoices | M | waiting | INV-1 |
-| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | M | waiting | UI-5, UI-8, owner OK |
+| 24 | UI-5 | UI: invoices | M | done (2026-11-20) | INV-1 (done) |
+| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | M | done (2026-11-20) | UI-5, UI-8, owner OK (2026-11-20) |
 | 26 | ERIC-1 | ERiC 44 API: `EricBearbeiteVorgang` without transfer handle | S | done (2026-11-20) | — |
 | 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | ready | — |
 | 28 | EUR-6 | EÜR test submission with the owner's Hersteller-ID | S | blocked | owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 29 | EUR-7 | EÜR XML: Kz 151 needs the Zeile 42 split (Kz 153) | S | ready | owner input on the split |
 | 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | done (2026-11-20) | — |
-| 31 | UI-8 | UI: the old UI's remaining features (manual entry, projects, partners, XML) | M | ready | — |
-| 32 | CLN-5 | Remove old UI, rename project to FreiBuch (fork of finamt) | L | waiting | UI-6 (retire old SPA) |
-| 33 | EUR-8 | Kleinunternehmer flag per year in Stammdaten, used by the EÜR page | S | ready | — |
+| 31 | UI-8 | UI: the old UI's remaining features (manual entry, projects, partners, XML) | M | done (2026-11-20) | — |
+| 32 | CLN-5 | Remove old UI, rename project to FreiBuch (fork of finamt) | L | waiting | UI-6 (done); one release with `/legacy-ui` first |
+| 33 | EUR-8 | Kleinunternehmer flag per year in Stammdaten, used by the EÜR page | S | done (2026-11-20) | — |
+| 34 | UI-9 | Uploads as a background job; progress on every page; one at a time | S | done (2026-11-20) | owner bug report |
+| 35 | UI-10 | Language switch DE/EN for `/app` | M | done (2026-11-20) | owner request |
+| 36 | INV-2 | Verify the § 19 invoice note (§ 34a UStDV) and the invoice VAT rounding source | S | ready | — |
 
 ---
 
@@ -261,7 +264,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-8: Kleinunternehmer flag per year
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20): years in Stammdaten (`freibuch_settings.kleinunternehmer_jahre`); EÜR page, overview, JSON and the invoice form use them. The UStVA-page note (no UStVA for such a year) is still open and needs a verified rule first · **Size**: S
 - **Goal**: decision D7 wants a per-year flag in the taxpayer profile. `generate_eur` has
   `kleinunternehmer=` since EUR-2, but every caller still uses Regelbesteuerung.
 - **Verified rules**: tax-rules.md section "Kleinunternehmer (§ 19 UStG)".
@@ -272,6 +275,15 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   `generate_eur(..., kleinunternehmer=Y in jahre)`; the UStVA page shows a note that no UStVA is
   due for such a year (§ 19 Abs. 1 UStG; check the exact rule in tax-rules.md first).
 - **Tests**: a year flagged → EÜR page shows Kz 111 and no Kz 140/185; unflagged → unchanged.
+
+### INV-2: verify the open invoice rules
+
+- **Status**: ready · **Size**: S
+- **Goal**: two `TODO` rows in tax-rules.md ("Kleinunternehmer invoice note", "invoice VAT
+  rounding"). Read § 34a UStDV (from 2025) and the UStAE on rounding; update the rows to
+  `verified` with the source, and change `invoicing.KLEINUNTERNEHMER_HINWEIS` or the rounding in
+  `invoicing/model.py` only if the source requires it.
+- **Tests**: adjust `tests/unit/test_invoicing.py` if a value changes.
 
 ---
 
@@ -317,7 +329,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### INV-1: outgoing invoices (§ 14 UStG)
 
-- **Status**: ready · **Size**: L
+- **Status**: done (2026-11-20) · **Size**: L
+- **Result**: `finamt.invoicing` (model, numbering, render, service), storage tables `invoice_sequence` / `invoices`, CLI `finamt invoice new|list|cancel`. Cancellations are a "Rechnungskorrektur (Storno)" with their own number, never "Gutschrift". The reverse-charge note waits for UST-4. Open checks: INV-2. Tests: `tests/unit/test_invoicing.py`.
 - **Goal**: create invoices like Accountable does: PDF plus a stored `sale` receipt, with every
   mandatory field and gapless numbering.
 - **Verified rules**: tax-rules.md → "Invoices" rows (§ 14 Abs. 4 fields 1–10, § 33 UStDV 250 €).
@@ -457,12 +470,12 @@ Shared rules for all UI cards:
 
 ### UI-5: invoices
 
-- **Status**: waiting (INV-1); `/app/rechnungen` is a placeholder · **Size**: M
+- **Status**: done (2026-11-20): list, create form, PDF, cancel · **Size**: M
 - **Goal**: create, list and download invoices built by INV-1.
 
 ### UI-6: switch over
 
-- **Status**: waiting (UI-5, UI-8, owner OK) · **Size**: M
+- **Status**: done (2026-11-20): `/` redirects to `/app`; bundle at `/legacy-ui` (no client-side router, assets keep `/assets/…`). Deleting the bundle and the `/tax/ebilanz/*` routes moves to CLN-5 after one release · **Size**: M
 - **Note**: the old bundle loads its assets from `/assets/...`; keep that mount when it moves to
   `/legacy-ui`.
 - **Goal**: serve the new UI at `/`, move the old bundle to `/legacy-ui` for one release, then delete
@@ -470,7 +483,7 @@ Shared rules for all UI cards:
 
 ### UI-8: the old UI's remaining features
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20): all five items (`/app/belege` manual entry, `/app/projekte`, `/app/partner`, XML button on `/app/ustva`, `/app/archiv`) · **Size**: M
 - **Goal**: what the old UI at `/` still does and `/app` doesn't, so UI-6 can retire it:
   1. manual receipt entry without a file (`POST /receipts` logic: build a `ReceiptData`, `repo.save`);
   2. create and delete projects (`validate_project_name`, `resolve_project(...).create_dirs()`);
