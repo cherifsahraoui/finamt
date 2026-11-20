@@ -24,8 +24,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | # | ID | Task | Size | Status | Depends on |
 |---|---|---|---|---|---|
 | 1 | EUR-1 | EÜR Kennzahlen per Anlage EÜR 2025 | M | done (2026-11-18) | — |
-| 2 | UST-1 | UStVA: import VAT in Kz 62, not Kz 66 | S | **ready** | — |
-| 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | ready | — |
+| 2 | UST-1 | UStVA: import VAT in Kz 62, not Kz 66 | S | done (2026-11-20) | — |
+| 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | **ready** | — |
 | 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | ready | — |
 | 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | ready | — |
 | 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | ready | UST-2 |
@@ -59,7 +59,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-1: import VAT in Kz 62, not Kz 66
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S
 - **Goal**: `_ustva_kennzahlen` adds `report.einfuhr_vat` into Kz 66. On the 2026 form,
   Einfuhrumsatzsteuer has its own line, Kz 62.
 - **Verified rules**: tax-rules.md → "UStVA Kennzahlen 2026" rows Kz 66 and Kz 62.

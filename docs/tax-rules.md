@@ -81,7 +81,7 @@ on 2026-11-20 (kept in the git-ignored `private/` folder, never committed):
 | Kz 45 | Other non-taxable supplies (place of supply not in Germany). | USt1A-2026 section E | 2026 | verified (2026-11-18) |
 | Kz 66 | Input tax from invoices of other businesses (§ 15 Abs. 1 S. 1 Nr. 1 UStG). | USt1A-2026 section F | 2026 | verified (2026-11-18) |
 | Kz 61 | Input tax from intra-EU acquisitions. | USt1A-2026 section F | 2026 | verified (2026-11-18) |
-| Kz 62 | Einfuhrumsatzsteuer (§ 15 Abs. 1 S. 1 Nr. 2 UStG). **Code adds it to Kz 66.** | USt1A-2026 section F; § 15 Abs. 1 S. 1 Nr. 2 UStG | 2026 | code differs → UST-1 |
+| Kz 62 | Einfuhrumsatzsteuer (§ 15 Abs. 1 S. 1 Nr. 2 UStG). Code writes `report.einfuhr_vat` here (cents, only if > 0); Kz 66 excludes it. | USt1A-2026 section F; § 15 Abs. 1 S. 1 Nr. 2 UStG | 2026 | verified (2026-11-20, UST-1) |
 | Kz 67 | Input tax from § 13b services (§ 15 Abs. 1 S. 1 Nr. 4 UStG). | USt1A-2026 section F | 2026 | code differs → UST-4 |
 | Kz 50 / Kz 37 | Extra memo lines only when a consideration became uncollectible (§ 17 Abs. 2 Nr. 1 UStG). Ordinary changes such as credit notes and discounts (§ 17 Abs. 1) are entered **in the base and tax lines themselves**, as negative amounts, in the period the change happens. Code skips receipts with negative VAT. | USt1A-2026 section I, Anleitung Zeilen 51–52 | 2026 | code differs → UST-2 |
 | Kz 39 | Deduction of the fixed Sondervorauszahlung (usually only in the last Voranmeldung of the year). | USt1A-2026 Zeile 49 | 2026 | verified (2026-11-18) |

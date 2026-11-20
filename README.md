@@ -38,14 +38,13 @@ these lives in [`legacy/`](legacy/README.md) and is not installed.
 The work is split into small tasks that an AI agent (or a person) can pick up one at a time.
 The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The next steps:
 
-1. **UST-1**: import VAT on its own UStVA line (Kz 62)
-2. **UST-2**: credit notes in the UStVA; always send Kz 83
-3. **EUR-2**: VAT lines and Kleinunternehmer mode in the EÜR
-4. **CLI-1**: `finamt eur`, monthly UStVA, filing-period hint
-5. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
-6. **INV-1**: outgoing invoices with gapless numbering
-7. **ZM-1**: Zusammenfassende Meldung
-8. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
+1. **UST-2**: credit notes in the UStVA; always send Kz 83
+2. **EUR-2**: VAT lines and Kleinunternehmer mode in the EÜR
+3. **CLI-1**: `finamt eur`, monthly UStVA, filing-period hint
+4. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
+5. **INV-1**: outgoing invoices with gapless numbering
+6. **ZM-1**: Zusammenfassende Meldung
+7. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
 
 Decisions that shape the project (CLI first, no live filing by default, …) are in
 [docs/DECISIONS.md](docs/DECISIONS.md).

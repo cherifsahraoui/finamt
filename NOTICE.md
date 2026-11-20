@@ -70,6 +70,11 @@ Branch `baseline/fable-1`:
   `submit(xml, mode="dry_run"|"test")`. Test mode requires the Testmerker in the XML and reads
   the ERiC directory from `ERIC_LIBRARY_PATH` only. `mode="live"` raises `NotImplementedError`.
 
+### UStVA import VAT (task UST-1, 2026-11-20)
+- `src/finamt/tax/elster.py` (`_ustva_kennzahlen`): upstream added Einfuhrumsatzsteuer into
+  Kz 66. It now goes to its own line, Kz 62 (USt1A-2026 section F); Kz 66 holds only input tax
+  from invoices. Kz 83 has the same value as before.
+
 ### EÜR ELSTER XML (task EUR-4, 2026-11-20)
 - `src/finamt/tax/eur_elster.py`: `build_xml(report, taxpayer, *, entnahmen, einlagen,
   hersteller_id, test=True)` builds the Anlage EÜR 2025 envelope (datenartVersion `EUER_2025`)
