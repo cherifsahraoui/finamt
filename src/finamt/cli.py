@@ -24,6 +24,13 @@ Usage examples
     # Generate report from already-stored receipts
     finamt ustva --quarter 1 --year 2024 --output ustva_q1.json
 
+    # Monthly UStVA, and which filing period § 18 UStG suggests for 2025
+    finamt ustva --month 3 --year 2025
+    finamt ustva --suggest-period --year 2025
+
+    # EÜR for 2025 (exit code 1 while receipts need review)
+    finamt eur --year 2025 --output eur_2025.json
+
     # Use a custom DB path
     finamt ustva --input-dir receipts/ --db /tmp/mydb.db
 
@@ -59,7 +66,18 @@ from rich.console import Console
 from finamt import FinanceAgent
 from finamt.storage import get_repository
 from finamt.storage.sqlite import DEFAULT_DB_PATH
+from finamt.tax.eur import generate_eur
 from finamt.tax.ustva import generate_ustva
+
+#: § 18 Abs. 2 S. 2 UStG: monthly Voranmeldungen if the prior-year tax was more than this
+#: (docs/tax-rules.md row "> 9 000 €").
+MONTHLY_THRESHOLD = Decimal("9000")
+#: § 18 Abs. 2 S. 3 UStG: the Finanzamt may exempt from Voranmeldungen at or below this
+#: (docs/tax-rules.md row "≤ 2 000 €").
+EXEMPTION_THRESHOLD = Decimal("2000")
+#: § 18 Abs. 2a UStG: monthly on request if the prior-year surplus was more than this
+#: (docs/tax-rules.md row "> 9 000 € surplus").
+SURPLUS_THRESHOLD = Decimal("9000")
 
 # ---------------------------------------------------------------------------
 # CLI class
@@ -246,6 +264,12 @@ class FinamtCLI:
         me, de = ends[quarter]
         return date(year, ms, ds), date(year, me, de)
 
+    @staticmethod
+    def _month_bounds(month: int, year: int) -> tuple[date, date]:
+        start = date(year, month, 1)
+        nxt = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        return start, date.fromordinal(nxt.toordinal() - 1)
+
     def ingest_receipts(
         self,
         input_dir: Path,
@@ -286,29 +310,36 @@ class FinamtCLI:
 
     def run_ustva(
         self,
-        quarter: int,
+        quarter: int | None,
         year: int,
         db_path: Path | None = None,
         output: Path | None = None,
         output_dir: Path | None = None,
+        month: int | None = None,
     ) -> int:
         """
-        Generate and print a UStVA report for the given quarter.
+        Generate and print a UStVA report for the given quarter or month.
 
         Args:
+            month:      Report one month instead of a quarter (``quarter`` is ignored).
             output:     Explicit output file path. Takes priority over output_dir.
             output_dir: Directory to write an auto-named file
-                        (e.g. ``ustva_q1_2024.json``).
+                        (e.g. ``ustva_q1_2024.json``, ``ustva_m03_2024.json``).
         """
-        start, end = self._quarter_bounds(quarter, year)
+        if month is not None:
+            start, end = self._month_bounds(month, year)
+            label, tag = f"{month:02d}/{year}", f"m{month:02d}"
+        else:
+            quarter = quarter or 1
+            start, end = self._quarter_bounds(quarter, year)
+            label, tag = f"Q{quarter} {year}", f"q{quarter}"
 
         with get_repository(db_path) as repo:
             receipts = list(repo.find_by_period(start, end))
 
         if not receipts:
             print(
-                f"No receipts found for Q{quarter} {year}.\n"
-                f"Run with --input-dir to scan and store PDFs first."
+                f"No receipts found for {label}.\nRun with --input-dir to scan and store PDFs first."
             )
             return 1
 
@@ -321,12 +352,80 @@ class FinamtCLI:
             out_path = output
         elif output_dir:
             output_dir.mkdir(parents=True, exist_ok=True)
-            out_path = output_dir / f"ustva_q{quarter}_{year}.json"
+            out_path = output_dir / f"ustva_{tag}_{year}.json"
 
         if out_path:
             report.to_json(out_path)
             print(f"Report saved to {out_path}")
 
+        return 0
+
+    def suggest_period(self, year: int, db_path: Path | None = None) -> int:
+        """
+        Print which Voranmeldungszeitraum § 18 Abs. 2 / 2a UStG suggests for ``year``,
+        from the tax of ``year - 1`` computed from the stored receipts. Information only.
+        """
+        prior = year - 1
+        start, end = date(prior, 1, 1), date(prior, 12, 31)
+        with get_repository(db_path) as repo:
+            receipts = list(repo.find_by_period(start, end))
+
+        if not receipts:
+            print(
+                f"Keine Belege für {prior} gespeichert; keine Empfehlung möglich.\n"
+                "Bei Neugründung gilt § 18 Abs. 2 S. 4 bzw. S. 6 UStG: bitte selbst prüfen."
+            )
+            return 1
+
+        tax = generate_ustva(receipts, start, end).net_liability
+        print(f"Umsatzsteuer {prior} (aus gespeicherten Belegen): {tax:.2f} EUR")
+        if tax > MONTHLY_THRESHOLD:
+            print(
+                f"Voranmeldungszeitraum {year}: monthly (Steuer > 9 000 €, § 18 Abs. 2 S. 2 UStG)"
+            )
+        else:
+            print(f"Voranmeldungszeitraum {year}: quarterly (§ 18 Abs. 2 S. 1 UStG)")
+            if tax <= EXEMPTION_THRESHOLD:
+                print(
+                    "exemption possible: Steuer ≤ 2 000 €, das Finanzamt kann von "
+                    "Voranmeldungen befreien (§ 18 Abs. 2 S. 3 UStG)"
+                )
+        if -tax > SURPLUS_THRESHOLD:
+            print("Überschuss > 9 000 €: monthly auf Antrag möglich (§ 18 Abs. 2a UStG)")
+        print("Nur zur Information; maßgeblich ist die Festsetzung des Finanzamts.")
+        return 0
+
+    def run_eur(
+        self,
+        year: int,
+        db_path: Path | None = None,
+        output: Path | None = None,
+        kleinunternehmer: bool = False,
+    ) -> int:
+        """
+        Print the EÜR for ``year``. Returns 1 when receipts still need a manual
+        decision (``review_lines``), so the result can't be filed by mistake.
+        """
+        with get_repository(db_path) as repo:
+            receipts = list(repo.find_by_period(date(year, 1, 1), date(year, 12, 31)))
+
+        if not receipts:
+            print(f"No receipts found for {year}.")
+            return 1
+
+        report = generate_eur(receipts, year, kleinunternehmer=kleinunternehmer)
+        print(report.summary())
+
+        if output:
+            report.to_json(output)
+            print(f"Report saved to {output}")
+
+        if report.review_lines:
+            print(
+                f"\n✗  {len(report.review_lines)} Beleggruppe(n) ZU PRÜFEN: "
+                "nicht abgabereif, erst entscheiden."
+            )
+            return 1
         return 0
 
 
@@ -467,8 +566,19 @@ def cmd_batch(
 
 @app.command("ustva")
 def cmd_ustva(
-    quarter: Annotated[int, QuarterOpt] = 1,
+    quarter: Annotated[int | None, QuarterOpt] = None,
     year: Annotated[int, YearOpt] = date.today().year,
+    month: Annotated[
+        int | None,
+        typer.Option("--month", min=1, max=12, help="Month (1–12) instead of a quarter."),
+    ] = None,
+    suggest_period: Annotated[
+        bool,
+        typer.Option(
+            "--suggest-period",
+            help="Suggest monthly/quarterly filing for --year from the prior year's tax.",
+        ),
+    ] = False,
     input_dir: Annotated[
         Path | None, typer.Option("--input-dir", help="Scan & ingest PDFs before reporting.")
     ] = None,
@@ -482,11 +592,20 @@ def cmd_ustva(
     receipt_type: Annotated[str, ReceiptType] = "purchase",
     db: Annotated[Path | None, DbOpt] = None,
 ) -> None:
-    """Generate a UStVA (VAT pre-return) report for a fiscal quarter."""
+    """Generate a UStVA (VAT pre-return) report for a quarter (default Q1) or a month."""
     if verbose:
         logging.basicConfig(level=logging.DEBUG, format="%(levelname)-8s %(name)s %(message)s")
+    if quarter is not None and month is not None:
+        raise typer.BadParameter("--quarter and --month are mutually exclusive.")
+    if quarter is not None and not 1 <= quarter <= 4:
+        raise typer.BadParameter("--quarter must be 1–4.")
 
     cli = FinamtCLI()
+    if suggest_period:
+        rc = cli.suggest_period(year=year, db_path=db)
+        if rc != 0:
+            raise typer.Exit(code=rc)
+        return
     if input_dir:
         cli.ingest_receipts(
             input_dir=input_dir,
@@ -500,6 +619,32 @@ def cmd_ustva(
         db_path=db,
         output=output,
         output_dir=output_dir,
+        month=month,
+    )
+    if rc != 0:
+        raise typer.Exit(code=rc)
+
+
+# ---------------------------------------------------------------------------
+# eur sub-command
+# ---------------------------------------------------------------------------
+
+
+@app.command("eur")
+def cmd_eur(
+    year: Annotated[int, YearOpt] = date.today().year - 1,
+    output: Annotated[
+        Path | None, typer.Option("--output", help="Write JSON report to this path.")
+    ] = None,
+    kleinunternehmer: Annotated[
+        bool,
+        typer.Option("--kleinunternehmer", help="§ 19 UStG: gross amounts, sales on Kz 111."),
+    ] = False,
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """EÜR (Anlage EÜR Kennzahlen) for a year; exit code 1 while receipts need review."""
+    rc = FinamtCLI().run_eur(
+        year=year, db_path=db, output=output, kleinunternehmer=kleinunternehmer
     )
     if rc != 0:
         raise typer.Exit(code=rc)
