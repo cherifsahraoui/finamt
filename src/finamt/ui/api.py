@@ -39,6 +39,7 @@ import asyncio
 import json
 import tempfile
 import urllib.request
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -1243,12 +1244,34 @@ class UStVASubmitRequest(BaseModel):
     cert_password: str | None = None
     use_test: bool = True
     validate_only: bool = False
+    # PRINT-1: ERiC PDF — preview (*** Vorschau ***) with validate_only, else the official
+    # copy after the send, stored next to the XML in submitted_returns/.
+    pdf: bool = False
     is_berichtigung: bool = False
     company_name: str = ""
     street: str = ""
     house_number: str = ""
     postal_code: str = ""
     city: str = ""
+
+
+def _pdf_target(layout, body, stem: str) -> str | None:
+    """Where ERiC writes the PDF (PRINT-1), or None when no PDF was asked for."""
+    if not getattr(body, "pdf", False):
+        return None
+    if body.validate_only:
+        # ERiC creates the file only when validation succeeds; just reserve a fresh name.
+        return str(Path(tempfile.gettempdir()) / f"freibuch_vorschau_{uuid.uuid4().hex}.pdf")
+    import datetime as _dtm
+
+    layout.submitted_returns_dir.mkdir(parents=True, exist_ok=True)
+    ts = _dtm.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    mode = "test" if body.use_test else "prod"
+    return str(layout.submitted_returns_dir / f"{stem}_{ts}_{mode}.pdf")
+
+
+def _pdf_result(pdf_path: str | None) -> str | None:
+    return pdf_path if pdf_path and Path(pdf_path).exists() else None
 
 
 def _ustva_period_info(
@@ -1464,19 +1487,30 @@ def post_ustva_submit(
         elster_cfg, eric_home=eric_home, use_test=body.use_test, log_dir=eric_log_dir
     )
 
+    _label = f"Q{body.quarter}" if body.quarter else f"M{body.month:02d}"
+    pdf_path = _pdf_target(layout, body, f"UStVA_{year}_{_label}")
     try:
         if body.validate_only:
             result = client.validate_ust(
-                report, year=year, period=eric_period, is_berichtigung=body.is_berichtigung
+                report,
+                year=year,
+                period=eric_period,
+                is_berichtigung=body.is_berichtigung,
+                pdf_path=pdf_path,
             )
             return {
                 "success": result.success,
                 "validate_only": True,
                 "message": result.error_message or "ERiC validation passed — not submitted.",
                 "error_code": result.error_code,
+                "pdf_path": _pdf_result(pdf_path),
             }
         result = client.submit_ust(
-            report, year=year, period=eric_period, is_berichtigung=body.is_berichtigung
+            report,
+            year=year,
+            period=eric_period,
+            is_berichtigung=body.is_berichtigung,
+            pdf_path=pdf_path,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -1514,6 +1548,9 @@ def post_ustva_submit(
                         "telenummer": result.telenummer,
                         "use_test": body.use_test,
                         "xml_filename": xml_filename,
+                        "pdf_filename": Path(_pdf_result(pdf_path)).name
+                        if _pdf_result(pdf_path)
+                        else None,
                     }
                 )
                 _r.set_metadata("submissions", _records)
@@ -1525,6 +1562,7 @@ def post_ustva_submit(
         "error_message": result.error_message,
         "use_test": body.use_test,
         "xml_filename": xml_filename,
+        "pdf_filename": Path(_pdf_result(pdf_path)).name if _pdf_result(pdf_path) else None,
     }
 
 
@@ -1636,6 +1674,9 @@ class UStESubmitRequest(BaseModel):
     cert_password: str | None = None
     use_test: bool = True
     validate_only: bool = False
+    # PRINT-1: ERiC PDF — preview (*** Vorschau ***) with validate_only, else the official
+    # copy after the send, stored next to the XML in submitted_returns/.
+    pdf: bool = False
     # Annual USt 2A address / tax fields
     company_name: str = ""
     street: str = ""
@@ -1803,16 +1844,18 @@ def post_uste_submit(
         elster_cfg, eric_home=eric_home, use_test=body.use_test, log_dir=eric_log_dir
     )
 
+    pdf_path = _pdf_target(layout, body, f"USt_{year}")
     try:
         if body.validate_only:
-            result = client.validate_ust(report, year=year, period=0)
+            result = client.validate_ust(report, year=year, period=0, pdf_path=pdf_path)
             return {
                 "success": result.success,
                 "validate_only": True,
                 "message": result.error_message or "ERiC validation passed — not submitted.",
                 "error_code": result.error_code,
+                "pdf_path": _pdf_result(pdf_path),
             }
-        result = client.submit_ust(report, year=year, period=0)
+        result = client.submit_ust(report, year=year, period=0, pdf_path=pdf_path)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -1848,6 +1891,9 @@ def post_uste_submit(
                         "telenummer": result.telenummer,
                         "use_test": body.use_test,
                         "xml_filename": xml_filename,
+                        "pdf_filename": Path(_pdf_result(pdf_path)).name
+                        if _pdf_result(pdf_path)
+                        else None,
                     }
                 )
                 _r.set_metadata("submissions", _records)
@@ -1859,6 +1905,7 @@ def post_uste_submit(
         "error_message": result.error_message,
         "use_test": body.use_test,
         "xml_filename": xml_filename,
+        "pdf_filename": Path(_pdf_result(pdf_path)).name if _pdf_result(pdf_path) else None,
     }
 
 

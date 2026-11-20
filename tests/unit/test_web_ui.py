@@ -1459,3 +1459,230 @@ class TestProjektReste:
         assert "Die Original-Dateien liegen weiter" in resp.text
         assert (root / "pdfs" / "a.pdf").exists()
         assert '<option value="mitpdf"' not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# PRINT-1: ERiC print PDF (preview and archived copy)
+# ---------------------------------------------------------------------------
+
+
+class TestDruck:
+    def _capture(self, monkeypatch, name, result):
+        import finamt.ui.api as api
+
+        seen = {}
+
+        def fake(body, db=None):
+            seen["body"] = body
+            return result(body) if callable(result) else result
+
+        monkeypatch.setattr(api, name, fake)
+        return seen
+
+    def _vorschau_datei(self, tmp_path):
+        f = tmp_path / "vorschau.pdf"
+        f.write_bytes(b"%PDF-1.7 vorschau")
+        return f
+
+    def test_ustva_preview_returns_pdf(self, client, monkeypatch, tmp_path):
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        f = self._vorschau_datei(tmp_path)
+        seen = self._capture(
+            monkeypatch, "post_ustva_submit", {"success": True, "pdf_path": str(f)}
+        )
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "q1", "aktion": "vorschau"},
+        )
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.content == b"%PDF-1.7 vorschau"
+        assert not f.exists()  # temp file removed after serving
+        body = seen["body"]
+        assert (body.validate_only, body.pdf, body.use_test) == (True, True, True)
+
+    def test_preview_failure_shows_message(self, client, monkeypatch):
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        self._capture(
+            monkeypatch,
+            "post_ustva_submit",
+            {"success": False, "message": "Prüffehler Kz 81", "error_code": "610001002"},
+        )
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "q1", "aktion": "vorschau"},
+        )
+        assert resp.headers["content-type"].startswith("text/html")
+        assert "Prüffehler Kz 81" in resp.text
+
+    def test_annual_preview(self, client, monkeypatch, tmp_path):
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        f = self._vorschau_datei(tmp_path)
+        seen = self._capture(monkeypatch, "post_uste_submit", {"success": True, "pdf_path": str(f)})
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "jahr", "aktion": "vorschau"},
+        )
+        assert resp.content.startswith(b"%PDF")
+        assert seen["body"].pdf is True
+
+    @pytest.mark.parametrize("kopie,erwartet", [("1", True), ("", False)])
+    def test_test_send_pdf_copy_optional(self, client, monkeypatch, kopie, erwartet):
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        seen = self._capture(
+            monkeypatch,
+            "post_ustva_submit",
+            lambda body: {
+                "success": True,
+                "telenummer": "T-1",
+                "pdf_filename": "UStVA_2025_Q1_x_test.pdf" if body.pdf else None,
+            },
+        )
+        resp = client.post(
+            "/app/ustva",
+            params={"projekt": PROJEKT},
+            data={"jahr": "2025", "zeitraum": "q1", "aktion": "test", "pdf_kopie": kopie},
+        )
+        assert seen["body"].pdf is erwartet
+        assert seen["body"].validate_only is False
+        assert ("PDF-Kopie öffnen" in resp.text) is erwartet
+
+    def test_checkbox_checked_by_default(self, client):
+        html = _get(client, "/app/ustva", jahr=2025, zeitraum="q1").text
+        assert 'name="pdf_kopie" value="1" checked' in html
+        assert 'value="vorschau"' in html
+
+    def test_euer_preview(self, client, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        TestEuerElster()._daten()
+
+        def fake(xml, pdf_path=None, **kw):
+            Path(pdf_path).write_bytes(b"%PDF euer")
+            return SubmissionResult(success=True)
+
+        monkeypatch.setattr(eur_elster, "eric_validate", fake)
+        resp = client.post(
+            "/app/euer",
+            params={"projekt": PROJEKT},
+            data={**TestEuerElster.FORM, "aktion": "vorschau"},
+        )
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.content == b"%PDF euer"
+
+    def test_euer_preview_failure(self, client, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        TestEuerElster()._daten()
+        monkeypatch.setattr(
+            eur_elster,
+            "eric_validate",
+            lambda xml, **kw: SubmissionResult(False, error_code="X", error_message="kaputt"),
+        )
+        resp = client.post(
+            "/app/euer",
+            params={"projekt": PROJEKT},
+            data={**TestEuerElster.FORM, "aktion": "vorschau"},
+        )
+        assert "kaputt" in resp.text
+
+    def test_archive_links_pdf(self, client):
+        TestArchiv()._submission()
+        subs = h.get_meta(_layout(), "submissions")
+        subs[0]["pdf_filename"] = "UStVA_2025_Q1_live.pdf"
+        _set_meta("submissions", subs)
+        assert "PDF (ERiC)" in _get(client, "/app/archiv").text
+
+
+class TestDruckApi:
+    """The old API stores ERiC's copy next to the XML and records it (fake ERiC client)."""
+
+    def _body(self, tmp_path, **kw):
+        import finamt.ui.api as api
+
+        cert = tmp_path / "c.pfx"
+        cert.write_bytes(b"x")
+        d = {
+            "year": 2025,
+            "quarter": 1,
+            "steuernummer": "9198011310010",
+            "finanzamt_nr": "9198",
+            "bundesland_kz": "09",
+            "hersteller_id": "12345",
+            "cert_path": str(cert),
+            "cert_password": "123456",
+            "company_name": "E",
+            "street": "S 1",
+            "postal_code": "80331",
+            "city": "M",
+            **kw,
+        }
+        return api.UStVASubmitRequest(**d)
+
+    def _fake_client(self, monkeypatch, tmp_path):
+        import finamt.tax.elster as elster
+        from finamt.tax.elster import SubmissionResult
+
+        calls = {}
+
+        class Fake:
+            def __init__(self, *a, **k):
+                pass
+
+            def submit_ust(self, report, pdf_path=None, **k):
+                calls["submit"] = pdf_path
+                if pdf_path:
+                    Path(pdf_path).write_bytes(b"%PDF copy")
+                return SubmissionResult(success=True, telenummer="T-7")
+
+            def validate_ust(self, report, pdf_path=None, **k):
+                calls["validate"] = pdf_path
+                if pdf_path:
+                    Path(pdf_path).write_bytes(b"%PDF preview")
+                return SubmissionResult(success=True)
+
+        monkeypatch.setattr(elster, "ElsterEricClient", Fake)
+        monkeypatch.setenv("FINAMT_ERIC_HOME", str(tmp_path))
+        return calls
+
+    def test_send_stores_and_records_pdf(self, home, monkeypatch, tmp_path):
+        import finamt.tax.safety as safety
+        import finamt.ui.api as api
+
+        calls = self._fake_client(monkeypatch, tmp_path)
+        monkeypatch.setattr(safety, "live_submission_allowed", lambda: True)  # flag never set
+        _layout().create_dirs()
+        _set_meta(h.TAXPAYER_KEY, TEST_TAXPAYER)
+        res = api.post_ustva_submit(
+            self._body(tmp_path, use_test=False, pdf=True), db=str(_layout().db_path)
+        )
+        assert res["success"] and res["pdf_filename"].endswith("_prod.pdf")
+        assert (_layout().submitted_returns_dir / res["pdf_filename"]).read_bytes() == b"%PDF copy"
+        assert Path(calls["submit"]).parent == _layout().submitted_returns_dir
+        rec = h.get_meta(_layout(), "submissions")[-1]
+        assert rec["pdf_filename"] == res["pdf_filename"]
+
+    def test_send_without_pdf(self, home, monkeypatch, tmp_path):
+        import finamt.ui.api as api
+
+        calls = self._fake_client(monkeypatch, tmp_path)
+        _layout().create_dirs()
+        res = api.post_ustva_submit(self._body(tmp_path), db=str(_layout().db_path))
+        assert calls["submit"] is None
+        assert res["pdf_filename"] is None
+
+    def test_preview_goes_to_temp_file(self, home, monkeypatch, tmp_path):
+        import finamt.ui.api as api
+
+        calls = self._fake_client(monkeypatch, tmp_path)
+        _layout().create_dirs()
+        res = api.post_ustva_submit(
+            self._body(tmp_path, validate_only=True, pdf=True), db=str(_layout().db_path)
+        )
+        assert Path(res["pdf_path"]).read_bytes() == b"%PDF preview"
+        assert Path(calls["validate"]).parent != _layout().submitted_returns_dir
+        Path(res["pdf_path"]).unlink()

@@ -1271,6 +1271,38 @@ class EBilanzEnvelopeBuilder:
 # ---------------------------------------------------------------------------
 
 
+def _druck_params(pdf_path: str | None, send: bool):
+    """ERiC print parameters for ``pdf_path`` (None: no PDF). Preview unless sending."""
+    if not pdf_path:
+        return None
+    from .eric_wrapper import make_druck_parameter
+
+    return make_druck_parameter(pdf_path, vorschau=not send)
+
+
+def _sent_despite_print_error(
+    rc: int, pdf_path: str | None, send: bool, server_xml: bytes, eric_text: str
+) -> SubmissionResult | None:
+    """
+    ERiC prints *after* the server accepted the data (Entwicklerhandbuch 44.3, 5.1.2.6), and a
+    print error still makes EricBearbeiteVorgang return an error. If a PDF was requested and
+    the server response holds a Telenummer, the return **was sent**: report success with a
+    warning, so nobody sends it a second time.
+    """
+    if not (send and pdf_path and server_xml):
+        return None
+    telenummer = ElsterEricClient._extract_telenummer(server_xml)
+    if not telenummer:
+        return None
+    return SubmissionResult(
+        success=True,
+        telenummer=telenummer,
+        error_code=str(rc),
+        error_message=f"Übermittelt, aber das PDF wurde nicht erstellt: {eric_text or rc}",
+        raw_response=server_xml.decode("utf-8", errors="replace"),
+    )
+
+
 class ElsterEricClient:
     """
     Submit an E-Bilanz (XBRL Jahresabschluss, § 5b EStG) to ELSTER via ERiC.
@@ -1346,9 +1378,14 @@ class ElsterEricClient:
         year: int,
         period: int = 0,
         is_berichtigung: bool = False,
+        pdf_path: str | None = None,
     ) -> SubmissionResult:
-        """Validate the USt/UStVA XML via ERiC without sending to ELSTER."""
-        return self._run_ust(report, year, period, is_berichtigung, send=False)
+        """
+        Validate the USt/UStVA XML via ERiC without sending to ELSTER.
+
+        ``pdf_path``: also write ERiC's print preview there (EBV-2, *** Vorschau ***).
+        """
+        return self._run_ust(report, year, period, is_berichtigung, send=False, pdf_path=pdf_path)
 
     def submit_ust(
         self,
@@ -1356,9 +1393,15 @@ class ElsterEricClient:
         year: int,
         period: int = 0,
         is_berichtigung: bool = False,
+        pdf_path: str | None = None,
     ) -> SubmissionResult:
-        """Validate and transmit the USt/UStVA to ELSTER via ERiC."""
-        return self._run_ust(report, year, period, is_berichtigung, send=True)
+        """
+        Validate and transmit the USt/UStVA to ELSTER via ERiC.
+
+        ``pdf_path``: ERiC writes the official copy there after the server accepted the data
+        (EBV-6; UStVA: Übertragungsprotokoll, USt: Freizeichnungsdokument).
+        """
+        return self._run_ust(report, year, period, is_berichtigung, send=True, pdf_path=pdf_path)
 
     def _run_ust(
         self,
@@ -1367,6 +1410,7 @@ class ElsterEricClient:
         period: int,
         is_berichtigung: bool,
         send: bool,
+        pdf_path: str | None = None,
     ) -> SubmissionResult:
         if send and not self.use_test:
             require_live_submission_allowed()
@@ -1374,6 +1418,7 @@ class ElsterEricClient:
         from pathlib import Path as _Path
 
         from .eric_wrapper import (
+            ERIC_DRUCKE,
             ERIC_SENDE,
             ERIC_VALIDIERE,
             EricBuffer,
@@ -1402,6 +1447,8 @@ class ElsterEricClient:
         flags = ERIC_VALIDIERE
         if send:
             flags |= ERIC_SENDE
+        if pdf_path:
+            flags |= ERIC_DRUCKE
 
         log_dir = self.log_dir
         if log_dir:
@@ -1432,6 +1479,7 @@ class ElsterEricClient:
                             crypto_params=cert.verschluesselungs_parameter if send else None,
                             response_buffer=resp_buf.handle(),
                             server_buffer=srv_buf.handle(),
+                            druck_params=_druck_params(pdf_path, send),
                         )
                         response_xml = resp_buf.content()
                         server_xml = srv_buf.content()
@@ -1449,6 +1497,9 @@ class ElsterEricClient:
             return SubmissionResult(success=False, error_code="ERIC_ERROR", error_message=str(exc))
 
         if rc != 0:
+            sent = _sent_despite_print_error(rc, pdf_path, send, server_xml, eric_text)
+            if sent is not None:
+                return sent
             err_msg = self._extract_eric_error(rc, response_xml, server_xml, eric_text)
             return SubmissionResult(
                 success=False,

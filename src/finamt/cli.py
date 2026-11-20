@@ -404,6 +404,7 @@ class FinamtCLI:
         xml: Path | None = None,
         validate: bool = False,
         elster: dict | None = None,
+        pdf: Path | None = None,
     ) -> int:
         """
         Print the EÜR for ``year``. Returns 1 when receipts still need a manual
@@ -434,12 +435,14 @@ class FinamtCLI:
                 "nicht abgabereif, erst entscheiden."
             )
             return 1
-        if xml or validate:
-            return self._eur_elster(report, meta, xml, validate, elster or {})
+        if xml or validate or pdf:
+            return self._eur_elster(report, meta, xml, validate or bool(pdf), elster or {}, pdf)
         return 0
 
     @staticmethod
-    def _eur_elster(report, meta: dict, xml_out: Path | None, validate: bool, e: dict) -> int:
+    def _eur_elster(
+        report, meta: dict, xml_out: Path | None, validate: bool, e: dict, pdf: Path | None = None
+    ) -> int:
         from finamt.tax import eur_elster
         from finamt.ui.web.helpers import eur_taxpayer
 
@@ -464,11 +467,13 @@ class FinamtCLI:
             xml_out.write_bytes(xml)
             print(f"Anlage EÜR XML (Testmerker) → {xml_out}")
         if validate:
-            res = eur_elster.eric_validate(xml)
+            res = eur_elster.eric_validate(xml, pdf_path=str(pdf.resolve()) if pdf else None)
             if not res.success:
                 print(f"✗  ERiC: {res.error_code}: {res.error_message}", file=sys.stderr)
                 return 1
             print("✓  ERiC-Prüfung ohne Fehler. Nichts gesendet.")
+            if pdf:
+                print(f"Druckansicht (PDF, *** Vorschau ***) → {pdf}")
         return 0
 
 
@@ -701,6 +706,12 @@ def cmd_eur(
             help="Line 11: land withdrawn or sold this year? 'ja' or 'nein' (no default).",
         ),
     ] = None,
+    pdf: Annotated[
+        Path | None,
+        typer.Option(
+            "--pdf", help="ERiC print preview of the Anlage EÜR to this file (implies --validate)."
+        ),
+    ] = None,
     entnahmen: Annotated[str, typer.Option("--entnahmen", help="Line 106, EUR.")] = "0",
     einlagen: Annotated[str, typer.Option("--einlagen", help="Line 107, EUR.")] = "0",
 ) -> None:
@@ -721,6 +732,7 @@ def cmd_eur(
         kleinunternehmer=kleinunternehmer,
         xml=xml,
         validate=validate,
+        pdf=pdf,
         elster={
             "art_des_betriebs": art_des_betriebs,
             "grundstuecke_entnommen": {"ja": True, "nein": False}.get(grundstuecke or ""),

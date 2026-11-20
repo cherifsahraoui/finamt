@@ -575,6 +575,7 @@ def ustva_senden(
     berichtigung: str = Form(""),
     besteuerungsart: str = Form("1"),
     vorauszahlungssoll: str = Form(""),
+    pdf_kopie: str = Form(""),
 ):
     """
     aktion: ``pruefen`` (ERiC validation only), ``test`` (Testmerker), ``live``, or ``xml``
@@ -584,7 +585,7 @@ def ustva_senden(
 
     layout = h.resolve(projekt)
     z = h.zeitraum(jahr, zeitraum)
-    if z is None or aktion not in ("pruefen", "test", "live", "xml"):
+    if z is None or aktion not in ("pruefen", "test", "live", "xml", "vorschau"):
         raise HTTPException(status_code=400, detail="Ungültiger Zeitraum oder Aktion.")
 
     fields, fehler = _elster_request_fields(layout)
@@ -596,7 +597,9 @@ def ustva_senden(
             **fields,
             "year": jahr,
             "use_test": aktion != "live",
-            "validate_only": aktion == "pruefen",
+            "validate_only": aktion in ("pruefen", "vorschau"),
+            # PRINT-1: preview, or the official copy stored in the archive after a send
+            "pdf": aktion == "vorschau" or (aktion in ("test", "live") and pdf_kopie == "1"),
         }
         xml_name = f"{'USt' if z.is_jahr else 'UStVA'}_{jahr}_{z.key}.xml"
         try:
@@ -611,6 +614,10 @@ def ustva_senden(
                 if aktion == "xml":
                     return _xml_download(_api.post_uste_xml(body, db=str(layout.db_path)), xml_name)
                 res = _api.post_uste_submit(body, db=str(layout.db_path))
+                if aktion == "vorschau":
+                    return _pdf_vorschau(res, f"USt_{jahr}_Vorschau.pdf") or _vorschau_fehler(
+                        request, layout, z, res
+                    )
             else:
                 body = _api.UStVASubmitRequest(
                     **common,
@@ -623,12 +630,17 @@ def ustva_senden(
                         _api.post_ustva_xml(body, db=str(layout.db_path)), xml_name
                     )
                 res = _api.post_ustva_submit(body, db=str(layout.db_path))
+                if aktion == "vorschau":
+                    return _pdf_vorschau(
+                        res, f"UStVA_{jahr}_{z.key}_Vorschau.pdf"
+                    ) or _vorschau_fehler(request, layout, z, res)
             ergebnis = {
                 "success": bool(res.get("success")),
                 "message": res.get("message") or res.get("error_message") or "",
                 "telenummer": res.get("telenummer"),
                 "error_code": res.get("error_code"),
                 "aktion": aktion,
+                "pdf_filename": res.get("pdf_filename"),
             }
         except HTTPException as exc:
             ergebnis = {"success": False, "message": str(exc.detail), "status": exc.status_code}
@@ -638,6 +650,37 @@ def ustva_senden(
             ergebnis = {"success": False, "message": str(exc)}
     return _render(
         request, "ustva.html", layout, "ustva", ergebnis=ergebnis, **_ustva_context(layout, z)
+    )
+
+
+def _pdf_vorschau(res: dict, filename: str) -> Response | None:
+    """The preview PDF ERiC wrote to a temp file (PRINT-1), served inline and then deleted."""
+    pfad = res.get("pdf_path")
+    if not (res.get("success") and pfad and Path(pfad).exists()):
+        return None
+    data = Path(pfad).read_bytes()
+    Path(pfad).unlink(missing_ok=True)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+def _vorschau_fehler(request: Request, layout, z, res: dict) -> HTMLResponse:
+    meldung = res.get("message") if not res.get("success") else ""
+    return _render(
+        request,
+        "ustva.html",
+        layout,
+        "ustva",
+        ergebnis={
+            "success": False,
+            "message": meldung or "ERiC hat keine Druckansicht erstellt.",
+            "error_code": res.get("error_code"),
+            "aktion": "vorschau",
+        },
+        **_ustva_context(layout, z),
     )
 
 
@@ -708,7 +751,7 @@ def euer_elster(
     from finamt.tax import eur_elster
 
     layout = h.resolve(projekt)
-    if aktion not in ("pruefen", "xml", "test") or not 2000 <= jahr <= 2100:
+    if aktion not in ("pruefen", "xml", "test", "vorschau") or not 2000 <= jahr <= 2100:
         raise HTTPException(status_code=400, detail="Ungültige Aktion oder ungültiges Jahr.")
     elster = {
         "art_des_betriebs": art_des_betriebs.strip(),
@@ -752,6 +795,24 @@ def euer_elster(
             headers={"Content-Disposition": f'attachment; filename="EUER_{jahr}.xml"'},
         )
     eric = h.eric_library_path(layout)
+    if aktion == "vorschau":
+        import tempfile
+        import uuid
+
+        pfad = Path(tempfile.gettempdir()) / f"freibuch_vorschau_{uuid.uuid4().hex}.pdf"
+        res = eur_elster.eric_validate(xml, eric_home=eric or None, pdf_path=str(pfad))
+        pdf = _pdf_vorschau(
+            {"success": res.success, "pdf_path": str(pfad)}, f"EUER_{jahr}_Vorschau.pdf"
+        )
+        if pdf is not None:
+            return pdf
+        return fertig(
+            {
+                "success": False,
+                "message": res.error_message or "ERiC hat keine Druckansicht erstellt.",
+                "error_code": res.error_code,
+            }
+        )
     if aktion == "pruefen":
         res = eur_elster.eric_validate(xml, eric_home=eric or None)
     else:

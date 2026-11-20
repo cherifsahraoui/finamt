@@ -898,3 +898,26 @@ class TestCliEurElster:
         assert result.exit_code == 1
         assert "Zeile 11" in result.output
         assert not (tmp_path / "x.xml").exists()
+
+
+class TestCliEurPdf:
+    def test_pdf_preview_implies_validate(self, tmp_path, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        seen = {}
+
+        def fake(xml, pdf_path=None, **kw):
+            seen["pdf"] = pdf_path
+            Path(pdf_path).write_bytes(b"%PDF")
+            return SubmissionResult(True)
+
+        monkeypatch.setattr(eur_elster, "eric_validate", fake)
+        db = TestCliEurElster()._db(tmp_path)
+        out = tmp_path / "vorschau.pdf"
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", db, "--pdf", str(out), *TestCliEurElster.ARGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert out.read_bytes() == b"%PDF"
+        assert "Druckansicht" in result.output

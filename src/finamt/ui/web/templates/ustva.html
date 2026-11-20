@@ -22,6 +22,7 @@
     {% elif ergebnis.aktion == "test" %}{{ _("Testfall gesendet (Testmerker; ELSTER löscht ihn).") }}{% if ergebnis.telenummer %} {{ _("Telenummer") }} {{ ergebnis.telenummer }}.{% endif %}
     {% else %}{{ _("Übermittelt.") }} {{ _("Telenummer") }} {{ ergebnis.telenummer or "—" }}.{% endif %}
     {% if ergebnis.message and ergebnis.aktion != "pruefen" %}<br>{{ ergebnis.message }}{% endif %}
+    {% if ergebnis.pdf_filename %}<br><a href="{{ href('/archiv/datei', name=ergebnis.pdf_filename) }}" target="_blank" rel="noopener">{{ _("PDF-Kopie öffnen") }}</a>{% endif %}
   {% else %}
     {{ _("Nicht übermittelt:") }} {{ ergebnis.message or _("unbekannter Fehler") }}{% if ergebnis.error_code %} ({{ _("Code") }} {{ ergebnis.error_code }}){% endif %}
     {% if ergebnis.status == 403 %}<br>{{ _("Live-Übermittlung ist gesperrt. Zum Senden den Server mit dieser Variable starten:") }} <code>{{ live_env }}=1</code>{% endif %}
@@ -70,10 +71,12 @@
       {% else %}
       <label class="check"><input type="checkbox" name="berichtigung" value="1"> {{ _("Berichtigte Anmeldung") }}</label>
       {% endif %}
+      <label class="check"><input type="checkbox" name="pdf_kopie" value="1" checked> {{ _("Beim Senden die PDF-Kopie von ERiC im Archiv speichern") }}</label>
       <div class="actions">
         <button type="submit" name="aktion" value="pruefen">{{ _("Mit ERiC prüfen") }}</button>
         <button type="submit" name="aktion" value="test">{{ _("Testfall senden") }}</button>
         <button type="submit" name="aktion" value="xml" class="secondary">{{ _("XML herunterladen") }}</button>
+        <button type="submit" name="aktion" value="vorschau" class="secondary" formtarget="_blank">{{ _("Druckansicht (PDF)") }}</button>
         {% if live_allowed %}
         <button type="submit" name="aktion" value="live" class="danger"
           onclick="return confirm('{{ _('Rechtsverbindlich an das Finanzamt senden?') }}')">{{ _("Verbindlich senden") }}</button>

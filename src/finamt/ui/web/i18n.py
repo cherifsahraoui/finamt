@@ -320,6 +320,13 @@ EN: dict[str, str] = {
         "No binding submission yet. Test cases are not stored."
     ),
     "XML herunterladen": "Download XML",
+    "Druckansicht (PDF)": "Print preview (PDF)",
+    "Beim Senden die PDF-Kopie von ERiC im Archiv speichern": (
+        "When sending, store ERiC's PDF copy in the archive"
+    ),
+    "PDF-Kopie öffnen": "Open PDF copy",
+    "PDF (ERiC)": "PDF (ERiC)",
+    "ERiC hat keine Druckansicht erstellt.": "ERiC did not create a print preview.",
     "Archiv": "Archive",
     "Abgegebene Erklärungen": "Submitted returns",
     "Keine archivierten Erklärungen.": "No archived returns.",

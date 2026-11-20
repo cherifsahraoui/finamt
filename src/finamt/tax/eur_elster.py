@@ -43,8 +43,11 @@ from .elster import (
     ElsterConfig,
     ElsterEricClient,
     SubmissionResult,
+    _druck_params,
+    _sent_despite_print_error,
 )
 from .eric_wrapper import (
+    ERIC_DRUCKE,
     ERIC_SENDE,
     ERIC_VALIDIERE,
     EricBuffer,
@@ -485,9 +488,13 @@ def eric_validate(
     datenart_version: str = DATENART_VERSION,
     log_dir: str | None = None,
     eric_home: str | None = None,
+    pdf_path: str | None = None,
 ) -> SubmissionResult:
     """
     Validate an EÜR envelope with the local ERiC library. **Nothing is sent.**
+
+    ``pdf_path``: also write ERiC's print preview there (EBV-2, *** Vorschau ***; with the
+    Testmerker also *** Testfall ***). Only written when validation succeeds.
 
     ``eric_home``: the ERiC lib directory; default ``ERIC_LIBRARY_PATH`` (decision D4).
 
@@ -506,7 +513,7 @@ def eric_validate(
             error_code="ERIC_LIBRARY_PATH_MISSING",
             error_message=f"Set {ERIC_LIBRARY_ENV} to the ERiC lib directory.",
         )
-    return _eric_run(xml, eric_home, datenart_version, None, log_dir)
+    return _eric_run(xml, eric_home, datenart_version, None, log_dir, pdf_path)
 
 
 def submit(
@@ -517,6 +524,7 @@ def submit(
     config: ElsterConfig | None = None,
     log_dir: str | None = None,
     eric_home: str | None = None,
+    pdf_path: str | None = None,
 ) -> SubmissionResult:
     """
     Validate and optionally transmit an EÜR envelope.
@@ -537,6 +545,8 @@ def submit(
         ``ElsterConfig.from_env()`` in test mode.
     log_dir:
         Optional ERiC log directory.
+    pdf_path:
+        Test mode only: ERiC writes its copy there after the server accepted the case.
     eric_home:
         ERiC lib directory; default ``ERIC_LIBRARY_PATH`` (decision D4). Other variables such
         as ``FINAMT_ERIC_HOME`` are never read here.
@@ -574,7 +584,7 @@ def submit(
             error_message=f"Set {ERIC_LIBRARY_ENV} to the ERiC lib directory.",
         )
     cfg = config or ElsterConfig.from_env()
-    return _eric_run(xml, eric_home, datenart_version, cfg, log_dir)
+    return _eric_run(xml, eric_home, datenart_version, cfg, log_dir, pdf_path)
 
 
 def _eric_run(
@@ -583,6 +593,7 @@ def _eric_run(
     datenart_version: str,
     cfg: ElsterConfig | None,
     log_dir: str | None,
+    pdf_path: str | None = None,
 ) -> SubmissionResult:
     """
     Run ERiC. ``cfg=None``: validate only, nothing is sent. With ``cfg``: validate + send
@@ -606,10 +617,12 @@ def _eric_run(
                     rc, _th = eric.bearbeite_vorgang(
                         xml_bytes=xml,
                         datenart_version=datenart_version,
-                        flags=ERIC_VALIDIERE | ERIC_SENDE if send else ERIC_VALIDIERE,
+                        flags=(ERIC_VALIDIERE | ERIC_SENDE if send else ERIC_VALIDIERE)
+                        | (ERIC_DRUCKE if pdf_path else 0),
                         crypto_params=cert.verschluesselungs_parameter if send else None,
                         response_buffer=resp_buf.handle(),
                         server_buffer=srv_buf.handle(),
+                        druck_params=_druck_params(pdf_path, send),
                     )
                     response_xml = resp_buf.content()
                     server_xml = srv_buf.content()
@@ -626,6 +639,9 @@ def _eric_run(
         )
 
     if rc != 0:
+        sent = _sent_despite_print_error(rc, pdf_path, send, server_xml, eric_text)
+        if sent is not None:
+            return sent
         return SubmissionResult(
             success=False,
             error_code=str(rc),

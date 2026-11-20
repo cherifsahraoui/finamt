@@ -659,6 +659,19 @@ class TestRealEric:
         result = eur_elster.eric_validate(xml, log_dir=str(tmp_path))
         assert result.success, f"{result.error_code}: {result.error_message}"
 
+    def test_print_preview_pdf(self, monkeypatch, tmp_path):
+        # PRINT-1 (EBV-2): ERiC writes a preview PDF; nothing is sent.
+        import fitz
+
+        monkeypatch.setenv(eur_elster.ERIC_LIBRARY_ENV, _REAL_ERIC_PATH)
+        xml = _build(_golden_report(), hersteller_id=_REAL_HERSTELLER_ID)
+        pdf = tmp_path / "vorschau.pdf"
+        result = eur_elster.eric_validate(xml, log_dir=str(tmp_path), pdf_path=str(pdf))
+        assert result.success, f"{result.error_code}: {result.error_message}"
+        with fitz.open(pdf) as doc:
+            text = " ".join(page.get_text() for page in doc)
+        assert "Vorschau" in text and "Testfall" in text
+
 
 class TestExplicitEricHome:
     """EUR-9: callers may pass the ERiC directory; default stays ERIC_LIBRARY_PATH (D4)."""
@@ -666,7 +679,7 @@ class TestExplicitEricHome:
     def test_explicit_path_used_without_env(self, monkeypatch, tmp_path, no_eric):
         seen = {}
 
-        def fake_run(xml, eric_home, datenart_version, cfg, log_dir):
+        def fake_run(xml, eric_home, datenart_version, cfg, log_dir, pdf_path=None):
             seen["eric_home"] = eric_home
             return eur_elster.SubmissionResult(success=True)
 
@@ -679,3 +692,143 @@ class TestExplicitEricHome:
     def test_still_missing_without_both(self, no_eric):
         result = eur_elster.eric_validate(_envelope())
         assert result.error_code == "ERIC_LIBRARY_PATH_MISSING"
+
+
+# ---------------------------------------------------------------------------
+# PRINT-1: ERiC print PDF (preview / copy after send), fake ERiC
+# ---------------------------------------------------------------------------
+
+
+class _PrintEric:
+    """Records bearbeite_vorgang calls; returns ``rc`` and an optional server answer."""
+
+    def __init__(self, rc=0, server=b""):
+        self.rc, self.server, self.calls = rc, server, []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def bearbeite_vorgang(self, **kw):
+        self.calls.append(kw)
+        return self.rc, None
+
+    def get_error_text(self, rc):
+        return "Druckfehler"
+
+
+class _PrintBuf:
+    def __init__(self, content=b""):
+        self._c = content
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def handle(self):
+        return None
+
+    def content(self):
+        return self._c
+
+
+class _PrintCert:
+    verschluesselungs_parameter = object()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+@pytest.fixture
+def print_eric(monkeypatch):
+    def install(rc=0, server=b""):
+        eric = _PrintEric(rc, server)
+        bufs = iter([_PrintBuf(), _PrintBuf(server)] * 4)
+        monkeypatch.setattr(eur_elster, "EricSession", lambda *a, **k: eric)
+        monkeypatch.setattr(eur_elster, "EricBuffer", lambda e: next(bufs))
+        monkeypatch.setattr(eur_elster, "EricCertificate", lambda *a, **k: _PrintCert())
+        return eric
+
+    return install
+
+
+class TestPrint:
+    def test_no_pdf_no_print_flag(self, print_eric, tmp_path):
+        eric = print_eric()
+        assert eur_elster.eric_validate(_envelope(), eric_home=str(tmp_path)).success
+        call = eric.calls[0]
+        assert call["druck_params"] is None
+        assert not call["flags"] & eur_elster.ERIC_DRUCKE
+
+    def test_preview_flags_and_parameters(self, print_eric, tmp_path):
+        from finamt.tax.eric_wrapper import DRUCK_PARAMETER_VERSION
+
+        eric = print_eric()
+        pdf = tmp_path / "vorschau.pdf"
+        eur_elster.eric_validate(_envelope(), eric_home=str(tmp_path), pdf_path=str(pdf))
+        call = eric.calls[0]
+        # EBV-2: VALIDIERE + DRUCKE, vorschau=1, no crypto parameters
+        assert call["flags"] == eur_elster.ERIC_VALIDIERE | eur_elster.ERIC_DRUCKE
+        assert call["crypto_params"] is None
+        p = call["druck_params"]
+        assert (p.version, p.vorschau, p.duplexDruck) == (DRUCK_PARAMETER_VERSION, 1, 0)
+        assert p.pdfName.endswith(b"vorschau.pdf")
+
+    def test_send_with_pdf_is_not_preview(self, print_eric, tmp_path):
+        eric = print_eric(server=b"<Telenummer>T1</Telenummer>")
+        eur_elster.submit(
+            _envelope(),
+            mode="test",
+            config=_cfg(),
+            eric_home=str(tmp_path),
+            pdf_path=str(tmp_path / "kopie.pdf"),
+        )
+        call = eric.calls[0]
+        assert call["flags"] == (
+            eur_elster.ERIC_VALIDIERE | eur_elster.ERIC_SENDE | eur_elster.ERIC_DRUCKE
+        )
+        assert call["druck_params"].vorschau == 0
+
+    def test_print_error_after_send_still_counts_as_sent(self, print_eric, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            eur_elster.ElsterEricClient, "_extract_telenummer", staticmethod(lambda xml: "T-9")
+        )
+        print_eric(rc=610001234, server=b"<Antwort/>")
+        res = eur_elster.submit(
+            _envelope(),
+            mode="test",
+            config=_cfg(),
+            eric_home=str(tmp_path),
+            pdf_path=str(tmp_path / "kopie.pdf"),
+        )
+        assert res.success is True
+        assert res.telenummer == "T-9"
+        assert "PDF wurde nicht erstellt" in res.error_message
+
+    def test_error_without_telenummer_is_a_failure(self, print_eric, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            eur_elster.ElsterEricClient, "_extract_telenummer", staticmethod(lambda xml: None)
+        )
+        print_eric(rc=610001234, server=b"<Antwort/>")
+        res = eur_elster.submit(
+            _envelope(),
+            mode="test",
+            config=_cfg(),
+            eric_home=str(tmp_path),
+            pdf_path=str(tmp_path / "kopie.pdf"),
+        )
+        assert res.success is False
+
+    def test_preview_error_is_a_failure(self, print_eric, tmp_path):
+        print_eric(rc=610001234)
+        res = eur_elster.eric_validate(
+            _envelope(), eric_home=str(tmp_path), pdf_path=str(tmp_path / "v.pdf")
+        )
+        assert res.success is False

@@ -16,6 +16,7 @@
       <td class="mono">{{ s.telenummer or "—" }}</td>
       <td>
         {% if s.xml_filename %}<a href="{{ href('/archiv/datei', name=s.xml_filename) }}">XML</a>{% endif %}
+        {% if s.pdf_filename %} · <a href="{{ href('/archiv/datei', name=s.pdf_filename) }}" target="_blank" rel="noopener">{{ _("PDF (ERiC)") }}</a>{% endif %}
         {% for art, feld, label in [("copy", "copy_filename", "Eigene Kopie"), ("final", "final_filename", "Bescheid")] %}
           <div class="row">
           {% if s[feld] %}
