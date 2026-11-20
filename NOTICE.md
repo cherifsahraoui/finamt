@@ -36,8 +36,8 @@ Branch `baseline/fable-1`:
   because UStVA/USt use them.
 - `src/finamt/tax/elster.py`: removed `ElsterXMLBuilder.build_kst` and
   `ElsterEricClient.validate_kst / submit_kst / _run_kst`. The E-Bilanz envelope code
-  (`EBilanzEnvelopeBuilder`, `*_ebilanz` methods) is still there but nothing in the CLI or API
-  uses it (documented in `docs/BASELINE.md`, removal tracked in `docs/TODO.md`).
+  (`EBilanzEnvelopeBuilder`, `validate_/submit_ebilanz`, `_run`, `export_ebilanz_xml`) was
+  removed later with its tests (task CLN-1, 2026-11-20).
 - CLI: it had no KSt/GewSt/E-Bilanz commands, so nothing changed.
 - Web UI: the repo only ships a pre-built bundle (`src/finamt/ui/static/`), with no frontend
   source. The bundle was **not** edited. It already hides KSt, GewSt and Jahresabschluss when
@@ -155,6 +155,15 @@ Branch `baseline/fable-1`:
   annual USt build refuses reports with them (E50 fields unverified).
 - `src/finamt/tax/eur.py`: such sales go to Kz 103.
 - Web UI: "USt-Behandlung" select on the receipt form; UStVA page lists the warnings.
+
+### Clean-ups (tasks CLN-2, CLN-3, CLN-4, 2026-11-20)
+- `src/finamt/__init__.py` (upstream file): `build_extraction_prompt` removed from `__all__`
+  (it was never imported, so `from finamt import *` failed). `tests/pytest.ini` deleted.
+- `src/finamt/tax/ustva.py` (upstream file): mixed-rate receipts are booked per `vat_splits`
+  entry instead of on the unused `"unknown"` rate line; `"unknown"` receipts add a warning.
+- `src/finamt/tax/elster.py` (upstream file): `build_ustva` no longer writes `—` / `00000` for a
+  missing sender address but raises `ValueError`; `ElsterConfig.from_env` reads the address
+  from `FINAMT_ELSTER_NAME/STREET/HOUSE_NUMBER/PLZ/CITY`.
 
 ### One ERiC path setting (task CFG-1, 2026-11-20)
 - `src/finamt/ui/api.py` (upstream file): `POST /tax/ustva/submit` and `POST /tax/uste/submit`

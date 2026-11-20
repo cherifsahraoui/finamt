@@ -38,9 +38,9 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | done (2026-11-20) | — |
 | 13 | EUR-4 | EÜR ELSTER XML builder | L | done (2026-11-20) | — |
 | 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | ERiC validation done; test send needs owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
-| 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | ready | — |
-| 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | ready | — |
-| 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 (done) |
+| 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | done (2026-11-20) | — |
+| 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | done (2026-11-20) | — |
+| 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | done (2026-11-20) | UST-2 (done) |
 | 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
 | 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M5](MANUAL-STEPS.md#m5-yearly-update)) |
 | 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | done (2026-11-20) | — |
@@ -50,7 +50,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 24 | UI-5 | UI: invoices | M | done (2026-11-20) | INV-1 (done) |
 | 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | M | done (2026-11-20) | UI-5, UI-8, owner OK (2026-11-20) |
 | 26 | ERIC-1 | ERiC 44 API: `EricBearbeiteVorgang` without transfer handle | S | done (2026-11-20) | — |
-| 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | ready | — |
+| 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | done (2026-11-20) | — |
 | 28 | EUR-6 | EÜR test submission with the owner's Hersteller-ID | S | blocked | owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 29 | EUR-7 | EÜR XML: Kz 151 needs the Zeile 42 split (Kz 153) | S | ready | owner input on the split |
 | 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | done (2026-11-20) | — |
@@ -438,7 +438,9 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CLN-1: remove the remaining E-Bilanz code
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S
+- **Result**: all listed code and tests removed. The `/tax/ebilanz/settings|eric-home|cert` routes
+  in `ui/api.py` stay (UStVA/USt settings use them; their removal belongs to CLN-5).
 - **Files**: `src/finamt/tax/elster.py` (`EBilanzEnvelopeBuilder`, `validate_ebilanz`,
   `submit_ebilanz`, `_run`, `export_ebilanz_xml`), `tests/unit/test_elster.py`
   (`TestEBilanzEnvelopeBuilder`, the `validate_ebilanz` test), `tests/unit/test_safety.py`
@@ -447,7 +449,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CLN-2: small fixes
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S · Test: `tests/unit/test_package_exports.py`.
 - `src/finamt/__init__.py`: `__all__` lists `build_extraction_prompt`, which is not imported, so
   `from finamt import *` raises. Remove it from `__all__`. Test: star import works.
 - `tests/pytest.ini`: `testpaths = src/tests` is wrong and only used when pytest runs from `tests/`.
@@ -455,7 +457,12 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CLN-3: mixed-rate receipts
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
+- **Result**: `generate_ustva` books each split of a receipt without `vat_percentage` on its rate
+  line (purchases: business share; missing split net = VAT × 100 / rate); incomplete splits fall
+  back to `"unknown"`; every `"unknown"` receipt and a split/receipt VAT mismatch add a report
+  warning. The EÜR needs no change: it uses the receipt's total net and VAT, not the rate. Tests:
+  `tests/unit/test_ustva_splits.py`.
 - **Goal**: `ReceiptData.vat_splits` (per-rate net/VAT) are stored but ignored. Tax code puts a
   receipt without a single `vat_percentage` on rate `"unknown"`, which no Kennzahl uses.
 - **Steps**: in `generate_ustva`, when `vat_splits` is present, add each split to its rate line;
@@ -463,7 +470,11 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CLN-4: no "—" placeholder in the UStVA sender address
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S
+- **Result**: `build_ustva` raises `ValueError` ("UStVA sender address missing (…)") when street,
+  PLZ or city is empty; the `00000` PLZ placeholder is gone too. `ElsterConfig.from_env` reads
+  `FINAMT_ELSTER_NAME/STREET/HOUSE_NUMBER/PLZ/CITY`. The test-submission script uses those and
+  falls back to the ERiC example sender only when they are unset.
 - **Found**: 2026-11-20 with ERiC 44.3. `ElsterXMLBuilder.build_ustva` writes `"—"` into
   `Anmeldungssteuern/DatenLieferant/Strasse` and `Ort` when the config has no address (always the
   case with `ElsterConfig.from_env()`). ERiC rejects it: `610001002`, FehlerID

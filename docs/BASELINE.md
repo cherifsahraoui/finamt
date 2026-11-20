@@ -114,14 +114,15 @@ uv run finamt --help                      # CLI
 | File | Lines | Responsibilities |
 |---|---|---|
 | `ui/api.py` | ~2.1k | All HTTP routes; project/taxpayer/submission bookkeeping; UStVA/USt submit endpoints duplicate ElsterConfig + ERiC setup inline (candidate for extraction); ELSTER settings persisted in DB metadata. |
-| `tax/elster.py` | ~1.7k | ElsterConfig/env, Steuernummer normalisation, UStVA Kz mapping + XSD order, XML builder (UStVA, USt E50), RSA signer, HTTP `ElsterClient`, ERiC `ElsterEricClient`; still contains the unused `EBilanzEnvelopeBuilder` + `*_ebilanz` methods (legacy, see TODO). |
+| `tax/elster.py` | ~1.7k | ElsterConfig/env, Steuernummer normalisation, UStVA Kz mapping + XSD order, XML builder (UStVA, USt E50), RSA signer, HTTP `ElsterClient`, ERiC `ElsterEricClient`. E-Bilanz code removed (CLN-1). |
 | `storage/sqlite.py` | ~1.3k | Schema + in-place migrations, receipt CRUD, counterparties (find-or-create, verify, defaults), postings, vat_splits, metadata KV store. |
 
 ## Known gaps (details in `docs/TODO.md`)
 
 - EÜR ELSTER XML (Kennzahlen not verified), EÜR CLI/API.
 - EÜR: assets > 800 € go to review (EUR-3).
-- UStVA ignores receipts with zero/no VAT (0 % / reverse-charge sales) and rate `unknown`.
-- `vat_splits` (mixed-rate receipts) are stored but not used by tax code.
+- Receipts without German VAT are reported only with a `vat_treatment` (UST-3/4); otherwise a
+  report warning. The annual USt (E50) refuses 0 % / tax-free / reverse-charge amounts.
+- `vat_splits` are used by the UStVA for receipts without a single rate (CLN-3).
 - ZM is calculated (`tax/zm.py`) but cannot be sent; invoices have no reverse-charge note yet.
 - Upload jobs live in memory: a server restart drops an unfinished job (saved receipts stay).
