@@ -55,6 +55,7 @@
     </table>
     {% else %}<p class="empty">{{ _("Keine umsatzsteuerlichen Belege in diesem Zeitraum.") }}</p>{% endif %}
     {% endif %}
+    {% if report.warnings %}<div class="notice err" role="status"><strong>{{ _("Nicht gemeldet:") }}</strong><ul>{% for w in report.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
     <p class="hint">{{ _("{n} Beleg(e)", n=report.total_receipts) }}{% if report.skipped_count %}, {{ _("{n} ohne USt nicht berücksichtigt", n=report.skipped_count) }}{% endif %}. <a href="{{ href('/belege', jahr=z.jahr, zeitraum=('' if z.is_jahr else z.key)) }}">{{ _("Belege ansehen") }}</a></p>
   </section>
 

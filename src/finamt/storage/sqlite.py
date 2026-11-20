@@ -116,6 +116,7 @@ class SQLiteRepository:
             ("receipts", "private_use_share", "TEXT DEFAULT '0'"),
             ("receipts", "validation_warnings", "TEXT"),
             ("receipts", "einfuhr_vat", "TEXT"),
+            ("receipts", "vat_treatment", "TEXT"),
         ]:
             try:
                 self._conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typedef}")
@@ -521,8 +522,9 @@ class SQLiteRepository:
                    (id, counterparty_id, receipt_type, receipt_number,
                     receipt_date, total_amount, vat_percentage, vat_amount,
                     currency, category, subcategory, description,
-                    private_use_share, validation_warnings, einfuhr_vat, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    private_use_share, validation_warnings, einfuhr_vat, vat_treatment,
+                    created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     receipt.id,
                     cp_id,
@@ -539,6 +541,7 @@ class SQLiteRepository:
                     str(getattr(receipt, "private_use_share", "0") or "0"),
                     json.dumps(getattr(receipt, "validation_warnings", []) or []),
                     str(getattr(receipt, "einfuhr_vat", None) or "") or None,
+                    getattr(receipt, "vat_treatment", None),
                     self._now(),
                 ),
             )
@@ -751,6 +754,7 @@ class SQLiteRepository:
             "private_use_share",
             "validation_warnings",
             "einfuhr_vat",
+            "vat_treatment",
         }
         # Financial fields whose change should trigger posting regeneration
         _POSTING_SENSITIVE = {
@@ -792,6 +796,13 @@ class SQLiteRepository:
                 )
             except Exception:
                 receipt_updates.pop("einfuhr_vat", None)
+        if "vat_treatment" in receipt_updates:
+            from finamt.models import VAT_TREATMENTS
+
+            vt = receipt_updates["vat_treatment"] or None
+            if vt is not None and vt not in VAT_TREATMENTS:
+                raise ValueError(f"unknown vat_treatment: {vt!r}")
+            receipt_updates["vat_treatment"] = vt
         if "currency" in receipt_updates:
             raw_cur = str(receipt_updates["currency"]).strip().upper()
             receipt_updates["currency"] = (
@@ -1364,6 +1375,10 @@ class SQLiteRepository:
         receipt.created_at = row["created_at"] if "created_at" in row.keys() else None
         # einfuhr_vat — Einfuhrumsatzsteuer (§ 15 Abs. 1 Satz 1 Nr. 2 UStG)
         receipt.einfuhr_vat = self._dec(row["einfuhr_vat"]) if "einfuhr_vat" in row.keys() else None
+        # vat_treatment — why a receipt has no German VAT (UST-3/UST-4); NULL for older rows
+        receipt.vat_treatment = (
+            row["vat_treatment"] if "vat_treatment" in row.keys() else None
+        ) or None
         return receipt
 
     # ------------------------------------------------------------------

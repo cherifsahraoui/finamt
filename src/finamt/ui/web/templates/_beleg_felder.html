@@ -18,6 +18,11 @@
       <label>{{ _("Brutto (€)") }} <input name="total_amount" class="num" inputmode="decimal" {% if not r %}required{% endif %} value="{{ r.total_amount|zahl if r else '' }}"></label>
       <label>{{ _("USt-Satz (%)") }} <input name="vat_percentage" class="num" inputmode="decimal" value="{{ r.vat_percentage|zahl if r else '19' }}"></label>
       <label>{{ _("USt (€)") }} <input name="vat_amount" class="num" inputmode="decimal" value="{{ r.vat_amount|zahl if r else '' }}" {% if not r %}placeholder="{{ _('leer = aus Satz berechnen') }}"{% endif %}></label>
+      <label>{{ _("USt-Behandlung") }}
+        <select name="vat_treatment">
+          {% for k, v in ust_arten.items() %}<option value="{{ k }}" {% if (r and (r.vat_treatment or '') == k) or (not r and not k) %}selected{% endif %}>{{ _(v) }}</option>{% endfor %}
+        </select>
+      </label>
       <label>{{ _("Einfuhrumsatzsteuer (€)") }} <input name="einfuhr_vat" class="num" inputmode="decimal" value="{{ r.einfuhr_vat|zahl if r else '' }}"></label>
       <label>{{ _("Privatanteil (%)") }} <input name="private_use_percent" class="num" inputmode="decimal" value="{{ (r.private_use_share * 100)|zahl if r and r.private_use_share else '' }}"></label>
       <label class="wide">{{ _("Notiz") }} <input name="description" value="{{ (r.description if r else '') or '' }}"></label>

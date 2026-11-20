@@ -938,6 +938,17 @@ class TestManuelleErfassung:
         _manuell(client, vat_amount="1,50")
         assert _alle()[0].vat_amount == Decimal("1.50")
 
+    def test_vat_treatment_saved_and_shown(self, client):
+        """UST-3/UST-4: the receipt form sets ``vat_treatment``."""
+        resp = _manuell(client, receipt_type="sale", vat_percentage="", vat_treatment="tax_free")
+        [r] = _alle()
+        assert r.vat_treatment == "tax_free"
+        assert '<option value="tax_free" selected>' in resp.text
+
+    def test_unknown_vat_treatment_ignored(self, client):
+        _manuell(client, vat_treatment="bogus")
+        assert _alle()[0].vat_treatment is None
+
     def test_two_identical_entries_are_two_receipts(self, client):
         _manuell(client)
         _manuell(client)

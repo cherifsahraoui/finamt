@@ -337,6 +337,30 @@ EN: dict[str, str] = {
     "Steuer zu anderen Steuersätzen": "Tax at other rates",
     "Vorsteuer aus Rechnungen anderer Unternehmer": "Input VAT from other businesses' invoices",
     "Verbleibende Vorauszahlung (+) / Überschuss (−)": "Remaining payment (+) / surplus (−)",
+    "Umsätze zum Steuersatz 0 % (§ 12 Abs. 3 UStG)": "Sales at 0 % (§ 12(3) UStG)",
+    "Steuerfreie Umsätze ohne Vorsteuerabzug": "Tax-free sales without input VAT deduction",
+    "Nicht steuerbare sonstige Leistungen (§ 18b S. 1 Nr. 2 UStG)": (
+        "Non-taxable services to EU businesses (§ 18b sentence 1 no. 2 UStG)"
+    ),
+    "Übrige nicht steuerbare Umsätze": "Other non-taxable sales",
+    "Umsätze, für die der Empfänger die Steuer schuldet (§ 13b Abs. 5 UStG)": (
+        "Sales where the recipient owes the tax (§ 13b(5) UStG)"
+    ),
+    "Leistungen nach § 13b Abs. 1 UStG (Bemessungsgrundlage)": (
+        "Services under § 13b(1) UStG (tax base)"
+    ),
+    "Steuer auf Leistungen nach § 13b Abs. 1 UStG": "Tax on services under § 13b(1) UStG",
+    "Andere Leistungen nach § 13b UStG (Bemessungsgrundlage)": (
+        "Other services under § 13b UStG (tax base)"
+    ),
+    "Steuer auf andere Leistungen nach § 13b UStG": "Tax on other services under § 13b UStG",
+    "Vorsteuer aus Leistungen nach § 13b UStG": "Input VAT from services under § 13b UStG",
+    "Nicht gemeldet:": "Not reported:",
+    "USt-Behandlung": "VAT treatment",
+    "normal (USt laut Beleg)": "normal (VAT as on the receipt)",
+    "0 % (§ 12 Abs. 3 UStG)": "0 % (§ 12(3) UStG)",
+    "steuerfrei": "tax-free",
+    "Reverse Charge (§ 13b UStG / EU-Leistung)": "Reverse charge (§ 13b UStG / EU service)",
     "Sollversteuerung (vereinbarte Entgelte)": "Accrual basis (agreed consideration)",
     "Istversteuerung (vereinnahmte Entgelte)": "Cash basis (received consideration)",
     "teils Soll-, teils Istversteuerung": "partly accrual, partly cash basis",

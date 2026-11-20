@@ -202,6 +202,10 @@ def _sale_kz(r: ReceiptData, cat: str, sub: str | None, kleinunternehmer: bool) 
         return "111", ""  # all Betriebseinnahmen of a Kleinunternehmer (EÜR guide, Zeile 12)
     if cat == "equipment":
         return "102", ""
+    if getattr(r, "vat_treatment", None):
+        # 0 % (§ 12 Abs. 3), tax-free or reverse charge (§ 13b / § 18b): EÜR Zeile 16
+        # (UST-3, UST-4; docs/tax-rules.md row "Kz 103").
+        return "103", ""
     vat, pct = r.vat_amount, r.vat_percentage
     if (vat is not None and vat != 0) or (pct is not None and pct > 0):
         return "112", ""

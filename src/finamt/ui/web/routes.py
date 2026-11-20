@@ -44,10 +44,28 @@ KZ_LABELS = {
     "Kz36": "Steuer zu anderen Steuersätzen",
     "Kz66": "Vorsteuer aus Rechnungen anderer Unternehmer",
     "Kz62": "Einfuhrumsatzsteuer",
+    "Kz87": "Umsätze zum Steuersatz 0 % (§ 12 Abs. 3 UStG)",
+    "Kz48": "Steuerfreie Umsätze ohne Vorsteuerabzug",
+    "Kz21": "Nicht steuerbare sonstige Leistungen (§ 18b S. 1 Nr. 2 UStG)",
+    "Kz45": "Übrige nicht steuerbare Umsätze",
+    "Kz60": "Umsätze, für die der Empfänger die Steuer schuldet (§ 13b Abs. 5 UStG)",
+    "Kz46": "Leistungen nach § 13b Abs. 1 UStG (Bemessungsgrundlage)",
+    "Kz47": "Steuer auf Leistungen nach § 13b Abs. 1 UStG",
+    "Kz84": "Andere Leistungen nach § 13b UStG (Bemessungsgrundlage)",
+    "Kz85": "Steuer auf andere Leistungen nach § 13b UStG",
+    "Kz67": "Vorsteuer aus Leistungen nach § 13b UStG",
     "Kz83": "Verbleibende Vorauszahlung (+) / Überschuss (−)",
 }
 
 TYP_LABELS = {"purchase": "Ausgabe", "sale": "Einnahme"}
+# ReceiptData.vat_treatment choices (UST-3, UST-4); "" = ordinary receipt
+UST_ARTEN = {
+    "": "normal (USt laut Beleg)",
+    "zero_rate": "0 % (§ 12 Abs. 3 UStG)",
+    "tax_free": "steuerfrei",
+    "reverse_charge": "Reverse Charge (§ 13b UStG / EU-Leistung)",
+}
+templates.env.globals["ust_arten"] = UST_ARTEN
 BESTEUERUNGSARTEN = (  # codes as used by ui/api.py UStESubmitRequest
     ("1", "Sollversteuerung (vereinbarte Entgelte)"),
     ("2", "Istversteuerung (vereinnahmte Entgelte)"),
@@ -351,6 +369,7 @@ def beleg_neu(
     vat_percentage: str = Form(""),
     vat_amount: str = Form(""),
     einfuhr_vat: str = Form(""),
+    vat_treatment: str = Form(""),
     private_use_percent: str = Form(""),
     description: str = Form(""),
 ):
@@ -395,6 +414,7 @@ def beleg_neu(
         receipt_number=receipt_number.strip() or None,
         description=description.strip(),
         private_use_share=(privat or Decimal("0")) / Decimal("100"),
+        vat_treatment=vat_treatment if vat_treatment in UST_ARTEN and vat_treatment else None,
     )
     if einfuhr_vat.strip():
         r.einfuhr_vat = h.parse_betrag(einfuhr_vat)
@@ -448,6 +468,7 @@ def beleg_speichern(
     vat_percentage: str = Form(""),
     vat_amount: str = Form(""),
     einfuhr_vat: str = Form(""),
+    vat_treatment: str = Form(""),
     private_use_percent: str = Form(""),
     description: str = Form(""),
 ):
@@ -465,6 +486,7 @@ def beleg_speichern(
             "vat_percentage": h.parse_betrag(vat_percentage),
             "vat_amount": h.parse_betrag(vat_amount),
             "einfuhr_vat": h.parse_betrag(einfuhr_vat),
+            "vat_treatment": vat_treatment if vat_treatment in UST_ARTEN else "",
             "private_use_share": (privat or Decimal("0")) / Decimal("100"),
             "description": description.strip(),
         }

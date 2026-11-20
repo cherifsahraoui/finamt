@@ -51,6 +51,45 @@ def _to_date(dt: date | datetime) -> date:
     return dt.date() if isinstance(dt, datetime) else dt
 
 
+# Prefixes of EU VAT identification numbers (Greece: "EL"). Source: European Commission,
+# "Annex 2: VAT identification number" (2014), without "GB" (no longer an EU member state).
+# "XI" (Northern Ireland) is not in the list, so it counts as non-EU here.
+# See docs/tax-rules.md row "EU VAT ID prefixes".
+EU_VAT_PREFIXES: frozenset[str] = frozenset(
+    "AT BE BG CY CZ DE DK EE EL ES FI FR HR HU IE IT LT LU LV MT NL PL PT RO SE SI SK".split()
+)
+# ISO country codes of the same states (Greece is "GR" as a country code).
+_EU_COUNTRY_CODES = (EU_VAT_PREFIXES - {"EL"}) | {"GR"}
+_GERMANY_NAMES = {"DE", "DEU", "DEUTSCHLAND", "GERMANY"}
+
+# Default rate for § 13b purchases when the receipt names none (§ 12 Abs. 1 UStG).
+_RC_DEFAULT_RATE = Decimal("19")
+
+
+def counterparty_region(r: ReceiptData) -> str | None:
+    """Return "DE", "EU" (other member state), "NON_EU" or None (unknown).
+
+    Uses the counterparty's VAT ID prefix first, then a two-letter country code
+    (or "Deutschland"/"Germany") in its address. Anything else is unknown: the
+    caller must not guess.
+    """
+    cp = r.counterparty
+    if cp is None:
+        return None
+    vat_id = (cp.vat_id or "").replace(" ", "").upper()
+    if len(vat_id) >= 4 and vat_id[:2].isalpha():
+        prefix = vat_id[:2]
+        if prefix == "DE":
+            return "DE"
+        return "EU" if prefix in EU_VAT_PREFIXES else "NON_EU"
+    country = ((cp.address.country if cp.address else None) or "").strip().upper()
+    if country in _GERMANY_NAMES:
+        return "DE"
+    if len(country) == 2 and country.isalpha():
+        return "EU" if country in _EU_COUNTRY_CODES else "NON_EU"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Per-rate line
 # ---------------------------------------------------------------------------
@@ -110,19 +149,58 @@ class USTVAReport:
     # by customs; tracked separately for ELSTER line 62 (pre-return) / 124 (annual).
     einfuhr_vat: Decimal = field(default_factory=Decimal)
 
+    # Receipts without German VAT, by ``ReceiptData.vat_treatment`` (UST-3, UST-4).
+    # Bases are net amounts; see docs/tax-rules.md for each Kennzahl.
+    zero_rate_net: Decimal = field(default_factory=Decimal)  # Kz 87 (§ 12 Abs. 3)
+    tax_free_net: Decimal = field(default_factory=Decimal)  # Kz 48
+    rc_eu_sales_net: Decimal = field(default_factory=Decimal)  # Kz 21 (§ 18b S. 1 Nr. 2)
+    rc_domestic_sales_net: Decimal = field(default_factory=Decimal)  # Kz 60 (§ 13b Abs. 5)
+    non_eu_sales_net: Decimal = field(default_factory=Decimal)  # Kz 45
+    rc_eu_purchase_net: Decimal = field(default_factory=Decimal)  # Kz 46 (§ 13b Abs. 1)
+    rc_eu_purchase_vat: Decimal = field(default_factory=Decimal)  # Kz 47
+    rc_other_purchase_net: Decimal = field(default_factory=Decimal)  # Kz 84 (§ 13b Abs. 2)
+    rc_other_purchase_vat: Decimal = field(default_factory=Decimal)  # Kz 85
+    rc_input_vat: Decimal = field(default_factory=Decimal)  # Kz 67 (business share)
+    # Receipts that could not be reported, with the reason (never silently dropped).
+    warnings: list[str] = field(default_factory=list)
+
     # ------------------------------------------------------------------
     # Aggregated totals
     # ------------------------------------------------------------------
 
     @property
     def total_input_vat(self) -> Decimal:
-        """Total Vorsteuer across all rates (from purchases) + Einfuhrumsatzsteuer."""
-        return sum((ln.purchase_vat for ln in self.lines.values()), Decimal("0")) + self.einfuhr_vat
+        """Total Vorsteuer: invoices (Kz 66) + Einfuhrumsatzsteuer (Kz 62) + § 13b (Kz 67)."""
+        return (
+            sum((ln.purchase_vat for ln in self.lines.values()), Decimal("0"))
+            + self.einfuhr_vat
+            + self.rc_input_vat
+        )
 
     @property
     def total_output_vat(self) -> Decimal:
-        """Total Umsatzsteuer across all rates (from sales)."""
-        return sum((ln.sale_vat for ln in self.lines.values()), Decimal("0"))
+        """Total Umsatzsteuer: sales at all rates + tax owed as recipient (§ 13b, Kz 47/85)."""
+        return (
+            sum((ln.sale_vat for ln in self.lines.values()), Decimal("0"))
+            + self.rc_eu_purchase_vat
+            + self.rc_other_purchase_vat
+        )
+
+    @property
+    def has_special_vat(self) -> bool:
+        """True when any 0 %, tax-free or reverse-charge amount is present (UST-3/UST-4)."""
+        return any(
+            v != 0
+            for v in (
+                self.zero_rate_net,
+                self.tax_free_net,
+                self.rc_eu_sales_net,
+                self.rc_domestic_sales_net,
+                self.non_eu_sales_net,
+                self.rc_eu_purchase_net,
+                self.rc_other_purchase_net,
+            )
+        )
 
     @property
     def net_liability(self) -> Decimal:
@@ -167,6 +245,17 @@ class USTVAReport:
             "total_output_vat": str(self.total_output_vat),
             "net_liability": str(self.net_liability),
             "lines": {k: v.to_dict() for k, v in sorted(self.lines.items())},
+            "zero_rate_net": str(self.zero_rate_net),
+            "tax_free_net": str(self.tax_free_net),
+            "rc_eu_sales_net": str(self.rc_eu_sales_net),
+            "rc_domestic_sales_net": str(self.rc_domestic_sales_net),
+            "non_eu_sales_net": str(self.non_eu_sales_net),
+            "rc_eu_purchase_net": str(self.rc_eu_purchase_net),
+            "rc_eu_purchase_vat": str(self.rc_eu_purchase_vat),
+            "rc_other_purchase_net": str(self.rc_other_purchase_net),
+            "rc_other_purchase_vat": str(self.rc_other_purchase_vat),
+            "rc_input_vat": str(self.rc_input_vat),
+            "warnings": list(self.warnings),
         }
 
     def to_json(self, path: str | Path | None = None) -> str:
@@ -209,6 +298,26 @@ class USTVAReport:
                     f"      Saldo          : {ln.net_liability:>+10.2f} EUR",
                 ]
 
+        special = [
+            ("0 %-Umsätze (Kz 87)", self.zero_rate_net),
+            ("Steuerfreie Umsätze (Kz 48)", self.tax_free_net),
+            ("EU-Leistungen § 18b (Kz 21)", self.rc_eu_sales_net),
+            ("§ 13b Abs. 5, Empfänger schuldet (Kz 60)", self.rc_domestic_sales_net),
+            ("Nicht steuerbar, Drittland (Kz 45)", self.non_eu_sales_net),
+            ("§ 13b Abs. 1 Einkauf netto (Kz 46)", self.rc_eu_purchase_net),
+            ("§ 13b Abs. 1 Steuer (Kz 47)", self.rc_eu_purchase_vat),
+            ("§ 13b Abs. 2 Einkauf netto (Kz 84)", self.rc_other_purchase_net),
+            ("§ 13b Abs. 2 Steuer (Kz 85)", self.rc_other_purchase_vat),
+            ("Vorsteuer § 13b (Kz 67)", self.rc_input_vat),
+        ]
+        shown = [(label, v) for label, v in special if v != 0]
+        if shown:
+            lines.append(div)
+            lines += [f"  {label:<42}: {v:>10.2f} EUR" for label, v in shown]
+        if self.warnings:
+            lines.append(div)
+            lines += [f"  ! {w}" for w in self.warnings]
+
         lines += [hdiv]
         if self.einfuhr_vat > 0:
             lines += [
@@ -245,6 +354,9 @@ def generate_ustva(
     Credit notes (negative ``vat_amount``) are kept: changes under § 17 Abs. 1 UStG go
     into the base and tax lines of their rate as negative amounts, in the period of the
     change (USt1A-2026 Anleitung, see docs/tax-rules.md row "Kz 50 / Kz 37").
+
+    Receipts without German VAT are reported only when ``vat_treatment`` says why
+    (UST-3, UST-4); see ``_add_special``. A 0 % sale without a reason adds a warning.
     """
     report = USTVAReport(period_start=period_start, period_end=period_end)
     start = _to_date(period_start)
@@ -258,13 +370,21 @@ def generate_ustva(
             report.skipped_count += 1
             continue
 
-        # Zero / missing VAT stays skipped until UST-3 (0 % rate, tax-free sales).
+        if getattr(r, "vat_treatment", None):
+            _add_special(report, r)
+            continue
+
         has_vat = bool(r.vat_amount and r.vat_amount != 0)
         ev = getattr(r, "einfuhr_vat", None)
         has_einfuhr = bool(r.is_purchase and ev and ev > 0)
 
         if not has_vat and not has_einfuhr:
             report.skipped_count += 1
+            if r.is_sale and r.total_amount:
+                report.warnings.append(
+                    f"Ausgangsbeleg {_label(r)} ohne USt und ohne Grund (0 %, steuerfrei, "
+                    "Reverse Charge): nicht gemeldet."
+                )
             continue
 
         # Einfuhrumsatzsteuer — track at report level (not per-rate line)
@@ -302,6 +422,19 @@ def generate_ustva(
             ln.sale_count += 1
 
     # Final rounding pass
+    for name in (
+        "zero_rate_net",
+        "tax_free_net",
+        "rc_eu_sales_net",
+        "rc_domestic_sales_net",
+        "non_eu_sales_net",
+        "rc_eu_purchase_net",
+        "rc_eu_purchase_vat",
+        "rc_other_purchase_net",
+        "rc_other_purchase_vat",
+        "rc_input_vat",
+    ):
+        setattr(report, name, _r(getattr(report, name)))
     for ln in report.lines.values():
         ln.purchase_vat = _r(ln.purchase_vat)
         ln.purchase_net = _r(ln.purchase_net)
@@ -309,3 +442,74 @@ def generate_ustva(
         ln.sale_net = _r(ln.sale_net)
 
     return report
+
+
+def _label(r: ReceiptData) -> str:
+    d = _to_date(r.receipt_date).isoformat() if r.receipt_date else "?"
+    return " ".join(x for x in (d, r.vendor or "", f"{r.total_amount} €") if x)
+
+
+def _add_special(report: USTVAReport, r: ReceiptData) -> None:
+    """Book a receipt whose ``vat_treatment`` is set (no German VAT on the invoice).
+
+    The base is the invoice amount (``total_amount``): such an invoice shows no VAT.
+    A receipt that does show VAT contradicts its treatment and is not reported.
+    """
+    treatment = r.vat_treatment
+    if r.vat_amount:
+        report.skipped_count += 1
+        report.warnings.append(
+            f"Beleg {_label(r)}: '{treatment}' gesetzt, aber USt {r.vat_amount} € "
+            "ausgewiesen; nicht gemeldet."
+        )
+        return
+    base = _r(r.total_amount or Decimal("0"))
+    if base == 0:
+        report.skipped_count += 1
+        return
+
+    if r.is_sale:
+        if treatment == "zero_rate":
+            report.zero_rate_net += base
+        elif treatment == "tax_free":
+            report.tax_free_net += base
+        else:  # reverse_charge: place of supply abroad, or § 13b Abs. 5 recipient in DE
+            region = counterparty_region(r)
+            if region == "EU":
+                report.rc_eu_sales_net += base
+            elif region == "DE":
+                report.rc_domestic_sales_net += base
+            elif region == "NON_EU":
+                report.non_eu_sales_net += base
+            else:
+                report.skipped_count += 1
+                report.warnings.append(
+                    f"Reverse-Charge-Ausgangsbeleg {_label(r)} ohne USt-IdNr oder Land des "
+                    "Kunden: Kz 21, 45 oder 60 unklar; nicht gemeldet."
+                )
+        return
+
+    # purchase
+    if treatment != "reverse_charge":
+        # A 0 % / tax-free purchase has no input tax: nothing to report in the UStVA.
+        report.skipped_count += 1
+        return
+    region = counterparty_region(r)
+    if region is None:
+        report.skipped_count += 1
+        report.warnings.append(
+            f"Reverse-Charge-Eingangsbeleg {_label(r)} ohne USt-IdNr oder Land des "
+            "Lieferanten: Kz 46/47 oder 84/85 unklar; nicht gemeldet."
+        )
+        return
+    rate = r.vat_percentage if r.vat_percentage and r.vat_percentage > 0 else _RC_DEFAULT_RATE
+    tax = _r(base * rate / Decimal("100"))
+    if region == "EU":
+        report.rc_eu_purchase_net += base
+        report.rc_eu_purchase_vat += tax
+    else:  # DE (§ 13b Abs. 2 Nr. 4 ff.) or non-EU supplier (§ 13b Abs. 2 Nr. 1)
+        report.rc_other_purchase_net += base
+        report.rc_other_purchase_vat += tax
+    # Input tax (§ 15 Abs. 1 S. 1 Nr. 4 UStG) only for the business share.
+    share = Decimal("1") - Decimal(str(r.private_use_share or 0))
+    report.rc_input_vat += _r(tax * share)

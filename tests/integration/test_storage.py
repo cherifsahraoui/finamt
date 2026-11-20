@@ -772,6 +772,36 @@ class TestVatSplits:
         assert rates == {19.0, 7.0}
 
 
+class TestVatTreatment:
+    """UST-3 / UST-4: why a receipt has no German VAT."""
+
+    def test_round_trip(self, repo):
+        r = _make_receipt(vat_amount=None, vat_percentage=None)
+        r.reverse_charge = True
+        repo.save(r)
+        assert repo.get(r.id).vat_treatment == "reverse_charge"
+        assert repo.get(r.id).reverse_charge is True
+
+    def test_default_none(self, repo):
+        r = _make_receipt()
+        repo.save(r)
+        assert repo.get(r.id).vat_treatment is None
+
+    def test_update(self, repo):
+        r = _make_receipt()
+        repo.save(r)
+        repo.update(r.id, {"vat_treatment": "tax_free"})
+        assert repo.get(r.id).vat_treatment == "tax_free"
+        repo.update(r.id, {"vat_treatment": ""})
+        assert repo.get(r.id).vat_treatment is None
+
+    def test_update_rejects_unknown(self, repo):
+        r = _make_receipt()
+        repo.save(r)
+        with pytest.raises(ValueError):
+            repo.update(r.id, {"vat_treatment": "nonsense"})
+
+
 # ---------------------------------------------------------------------------
 # Invoices (INV-1): tables are added in place to an existing database
 # ---------------------------------------------------------------------------

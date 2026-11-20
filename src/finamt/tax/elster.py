@@ -517,6 +517,29 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
     if report.einfuhr_vat > 0:
         kz["Kz62"] = cents(report.einfuhr_vat)
 
+    # Receipts without German VAT (UST-3, UST-4). Bases in whole euros, tax in cents.
+    # Sales: Kz 87 (0 %, § 12 Abs. 3), Kz 48 (tax-free), Kz 21 (§ 18b S. 1 Nr. 2,
+    # EU B2B services), Kz 45 (other non-taxable), Kz 60 (§ 13b Abs. 5, recipient in DE).
+    # Purchases where FreiBuch owes the tax: Kz 46/47 (§ 13b Abs. 1), Kz 84/85
+    # (§ 13b Abs. 2), deducted again in Kz 67. See docs/tax-rules.md.
+    for name, value in (
+        ("Kz87", report.zero_rate_net),
+        ("Kz48", report.tax_free_net),
+        ("Kz21", report.rc_eu_sales_net),
+        ("Kz45", report.non_eu_sales_net),
+        ("Kz60", report.rc_domestic_sales_net),
+        ("Kz46", report.rc_eu_purchase_net),
+        ("Kz84", report.rc_other_purchase_net),
+    ):
+        if value != 0:
+            kz[name] = whole(value)
+    if report.rc_eu_purchase_net != 0:
+        kz["Kz47"] = cents(report.rc_eu_purchase_vat)
+    if report.rc_other_purchase_net != 0:
+        kz["Kz85"] = cents(report.rc_other_purchase_vat)
+    if report.rc_input_vat != 0:
+        kz["Kz67"] = cents(report.rc_input_vat)
+
     # Kz 83 must always be filled in, "0.00" for an empty period (USt1A-2026 Zeile 50).
     # Positive = Zahllast (payment due); negative = Überschuss (refund)
     net = report.total_output_vat - report.total_input_vat
@@ -779,6 +802,15 @@ class ElsterXMLBuilder:
 
         def _int(v: Decimal) -> str:
             return str(int(v.to_integral_value(rounding=ROUND_DOWN)))
+
+        if report.has_special_vat:
+            # TODO(verify): E50 elements for 0 %, tax-free and reverse-charge amounts are
+            # not mapped — see docs/tax-rules.md row "E50 elements". Refuse rather than
+            # send an annual return that leaves them out.
+            raise NotImplementedError(
+                "Annual USt (E50) with 0 %, tax-free or reverse-charge receipts is not "
+                "supported yet: the E50 fields for them are not verified."
+            )
 
         # Compute values from report
         ln19 = report.line_19
