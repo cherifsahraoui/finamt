@@ -100,6 +100,14 @@ Branch `baseline/fable-1`:
   Kz 66. It now goes to its own line, Kz 62 (USt1A-2026 section F); Kz 66 holds only input tax
   from invoices. Kz 83 has the same value as before.
 
+### UStVA credit notes and Kz 83 (task UST-2, 2026-11-20)
+- `src/finamt/tax/ustva.py` (`generate_ustva`): upstream skipped receipts with negative VAT, so
+  credit notes were lost. They now stay on their rate line as negative amounts (§ 17 Abs. 1 UStG,
+  USt1A-2026 Anleitung).
+- `src/finamt/tax/elster.py` (`_ustva_kennzahlen`): Kz 81/86/35 and Kz 66 are written whenever
+  non-zero, including negative; Kz 83 is always written, `0.00` for an empty period (upstream
+  omitted it).
+
 ### EÜR ELSTER XML (task EUR-4, 2026-11-20)
 - `src/finamt/tax/eur_elster.py`: `build_xml(report, taxpayer, *, entnahmen, einlagen,
   hersteller_id, test=True)` builds the Anlage EÜR 2025 envelope (datenartVersion `EUER_2025`)

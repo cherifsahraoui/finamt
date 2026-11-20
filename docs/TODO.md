@@ -26,11 +26,11 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 |---|---|---|---|---|---|
 | 1 | EUR-1 | EÜR Kennzahlen per Anlage EÜR 2025 | M | done (2026-11-18) | — |
 | 2 | UST-1 | UStVA: import VAT in Kz 62, not Kz 66 | S | done (2026-11-20) | — |
-| 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | **ready** | — |
-| 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | ready | — |
+| 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | done (2026-11-20) | — |
+| 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | **ready** | — |
 | 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | ready | — |
-| 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | ready | UST-2 |
-| 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | waiting | UST-2 |
+| 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | ready | UST-2 (done) |
+| 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | ready | UST-2 (done) |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | ready | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
@@ -40,7 +40,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | ERiC validation done; test send needs owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | ready | — |
 | 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | ready | — |
-| 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 |
+| 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 (done) |
 | 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
 | 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M5](MANUAL-STEPS.md#m5-yearly-update)) |
 | 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | done (2026-11-20) | — |
@@ -79,7 +79,10 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-2: credit notes in the base lines; always send Kz 83
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S
+- **Result**: negative receipts stay on their rate line; Kz 81/86/35 and Kz 66 are written
+  when non-zero (negatives with a minus, Kz 66 too, so Kz 83 matches the lines); Kz 83 is always
+  written. Tests in `tests/unit/test_ustva.py` and `TestUstvaKennzahlen`.
 - **Goal**: `generate_ustva` skips receipts with `vat_amount <= 0`, so credit notes vanish.
   The official guide says § 17 Abs. 1 changes go into the base and tax lines themselves, as
   negative amounts, in the period of the change. Also, Kz 83 must always be sent ("Bitte in
@@ -103,7 +106,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-3: 0 % rate (Kz 87) and tax-free sales (Kz 48)
 
-- **Status**: ready after UST-2 · **Size**: S
+- **Status**: ready · **Size**: S
 - **Goal**: sales with VAT 0 are skipped today. Report 0 %-rate sales (§ 12 Abs. 3) in Kz 87 and
   tax-free sales without input-tax deduction in Kz 48.
 - **Verified rules**: tax-rules.md rows 0 %, Kz 87, Kz 48.
@@ -116,7 +119,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-4: reverse charge flag and Kennzahlen
 
-- **Status**: waiting (UST-2) · **Size**: L
+- **Status**: ready · **Size**: L
 - **Goal**: a freelancer billing EU business clients reports those sales in **Kz 21**
   (§ 18b S. 1 Nr. 2). Services bought from EU businesses (e.g. software subscriptions) are reported
   in **Kz 46 / 47** with the same tax deducted in **Kz 67**. German § 13b supplier cases go to Kz 60.
@@ -342,7 +345,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CLN-3: mixed-rate receipts
 
-- **Status**: ready after UST-2 · **Size**: M
+- **Status**: ready · **Size**: M
 - **Goal**: `ReceiptData.vat_splits` (per-rate net/VAT) are stored but ignored. Tax code puts a
   receipt without a single `vat_percentage` on rate `"unknown"`, which no Kennzahl uses.
 - **Steps**: in `generate_ustva`, when `vat_splits` is present, add each split to its rate line;
