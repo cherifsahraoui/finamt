@@ -108,6 +108,16 @@ Branch `baseline/fable-1`:
   non-zero, including negative; Kz 83 is always written, `0.00` for an empty period (upstream
   omitted it).
 
+### EÜR VAT lines and Kleinunternehmer mode (task EUR-2, 2026-11-20)
+- `src/finamt/tax/eur.py`: upstream computed the profit by the net method (VAT left out).
+  It now follows the official Anlage EÜR (decision D6): sale VAT → Kz 140, purchase VAT
+  → Kz 185, `tax_settlement`/`vat_payment` → Kz 186, `tax_settlement`/`vat_refund` → Kz 141, all
+  part of `gewinn`. New `kleinunternehmer=True` (decision D7): sales → Kz 111 at gross,
+  purchases at gross, no VAT lines; the GWG limit is then compared with the gross cost.
+  `EURReport` gained `kleinunternehmer`, `kz140_ust_vereinnahmt`, `kz185_vorsteuer`,
+  `total_betriebseinnahmen`, `total_betriebsausgaben`; the summary drops the net-method warning.
+- `src/finamt/ui/web/templates/euer.html`: shows Kz 140/185 and the totals including VAT.
+
 ### EÜR ELSTER XML (task EUR-4, 2026-11-20)
 - `src/finamt/tax/eur_elster.py`: `build_xml(report, taxpayer, *, entnahmen, einlagen,
   hersteller_id, test=True)` builds the Anlage EÜR 2025 envelope (datenartVersion `EUER_2025`)

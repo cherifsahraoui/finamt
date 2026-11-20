@@ -117,7 +117,7 @@ uv run finamt --help                      # CLI
 ## Known gaps (details in `docs/TODO.md`)
 
 - EÜR ELSTER XML (Kennzahlen not verified), EÜR CLI/API.
-- EÜR excludes VAT from the profit and has no Kleinunternehmer mode (EUR-2); assets > 800 € go to review (EUR-3).
-- UStVA ignores receipts with no/negative VAT (credit notes, 0 % / reverse-charge sales) and rate `unknown`.
+- EÜR: Kleinunternehmer mode exists in `generate_eur` but is not wired to Stammdaten/UI (EUR-8); assets > 800 € go to review (EUR-3).
+- UStVA ignores receipts with zero/no VAT (0 % / reverse-charge sales) and rate `unknown`.
 - `vat_splits` (mixed-rate receipts) are stored but not used by tax code.
 - No invoice generation, no ZM, no reverse-charge flag.

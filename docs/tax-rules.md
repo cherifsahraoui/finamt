@@ -47,7 +47,7 @@ on 2026-11-20 (kept in the git-ignored `private/` folder, never committed):
 |---|---|---|---|---|
 | 25 000 € | Prior-year Gesamtumsatz must not exceed 25 000 € ("im vorangegangenen Kalenderjahr 25 000 Euro nicht überschritten"). Not used by code yet. | § 19 Abs. 1 S. 1 UStG | from 2025 | verified (2026-11-18) |
 | 100 000 € | Current-year Gesamtumsatz must not exceed 100 000 €. Not used by code yet. | § 19 Abs. 1 S. 1 UStG | from 2025 | verified (2026-11-18) |
-| tax-free, no VAT on invoices | Kleinunternehmer turnover is "steuerfrei". In the EÜR, all receipts go to Kz 111 at the received amount, and lines 15–17 are normally not used. | § 19 Abs. 1 UStG; EÜR-2025 Anleitung Zeile 12 | 2025 | verified (2026-11-18); code: EUR-2 |
+| tax-free, no VAT on invoices | Kleinunternehmer turnover is "steuerfrei". In the EÜR, all receipts go to Kz 111 at the received amount, and lines 15–17 are normally not used. | § 19 Abs. 1 UStG; EÜR-2025 Anleitung Zeile 12 | 2025 | verified (2026-11-18); code: `generate_eur(kleinunternehmer=True)` (EUR-2, 2026-11-20) |
 
 ## UStVA periods and deadlines (§ 18 UStG, UStDV)
 
@@ -113,7 +113,7 @@ on 2026-11-20 (kept in the git-ignored `private/` folder, never committed):
 | electronic | Anlage EÜR must be sent electronically in the official data set; paper only on hardship application. | § 60 Abs. 4 EStDV | current | verified (2026-11-18) |
 | 800 € GWG | Movable assets up to 800 € net (excluding Vorsteuer) may be fully expensed in the year of purchase. | § 6 Abs. 2 S. 1 EStG | current | verified (2026-11-18) |
 | 250 / 1 000 € pool | Optional Sammelposten for assets over 250 € and up to 1 000 € net, written off over 5 years. Not implemented. | § 6 Abs. 2a EStG | current | verified (2026-11-18) |
-| VAT is income/expense | VAT collected (Kz 140), VAT refunded by the FA (Kz 141), Vorsteuer paid (Kz 185) and USt paid to the FA (Kz 186) are Betriebseinnahmen / -ausgaben in the year of payment. **Code excludes VAT from the profit (net method).** | EÜR-2025 Anleitung Zeile 17, 18; form lines 17, 18, 57, 58 | 2025 | code differs → EUR-2 |
+| VAT is income/expense | VAT collected (Kz 140), VAT refunded by the FA (Kz 141), Vorsteuer paid (Kz 185) and USt paid to the FA (Kz 186) are Betriebseinnahmen / -ausgaben in the year of payment. Code: sale VAT → Kz 140, purchase VAT (business share) → Kz 185, `tax_settlement`/`vat_payment` → Kz 186, `tax_settlement`/`vat_refund` → Kz 141; `gewinn` includes them. | EÜR-2025 Anleitung Zeile 17, 18; form lines 17, 18, 57, 58 | 2025 | verified (2026-11-20, EUR-2) |
 
 ## Anlage EÜR 2025 Kennzahlen (EÜR-2025 form, used by `eur.py`)
 
@@ -272,7 +272,7 @@ rule number in sheet "EUER - Regeln"; all are of type *Fehler* (error) unless st
 | Zeile 97, Kz 219 | `…/Stpfl_GuV/E6007202` "Steuerpflichtiger Gewinn/Verlust", mandatory (600642), = line 95 + line 96 (600645). Format P. | 97 | as above | verified (2026-11-20) |
 | Zeilen 106 / 107, Kz 122 / 123 | `Zus_Angabe_EinzelUntern/Entnahme_Einlage/Entnahme/Sum/E6006601` (Entnahmen incl. Sach-, Leistungs- und Nutzungsentnahmen) and `…/Einlage/Sum/E6006701` (Einlagen). Format %. For Rechtsform group TID **both are mandatory** (600904, "zwingend einzutragen (§ 4 Absatz 4a Satz 6 EStG)"); `0,00` is accepted. Einlagen must not be lower than Kz 147 (600903). Not derived from receipts: `build_xml` takes them as arguments. | 106, 107 | rules 600903, 600904; ERiC-44.3-run | verified (2026-11-20) |
 | Kz 153 (Zeile 42) | `BAus/Raumkosten_u_sonst/Davon_Erhalt_Grundstueck/Sum/E6004015` "in Zeile 41 enthaltene Erhaltungsaufwendungen". Lines 41 (Kz 151) and 42 must be sent **together** (600522). The report has no such split, so `build_xml` refuses Kz 151. | 42 | rule 600522; ERiC-44.3-run | verified (2026-11-20); code: EUR-7 |
-| Kz 112 needs Kz 140 | Taxable income (Kz 112, `E6000401`) ≠ 0 without the collected-VAT line (Kz 140, `E6000601`) is an error (600240). `build_xml` refuses it until EUR-2 adds the VAT lines. | 15, 17 | rule 600240; ERiC-44.3-run | verified (2026-11-20) |
+| Kz 112 needs Kz 140 | Taxable income (Kz 112, `E6000401`) ≠ 0 without the collected-VAT line (Kz 140, `E6000601`) is an error (600240). `generate_eur` adds Kz 140 since EUR-2; `build_xml` still refuses a report that has Kz 112 without it. | 15, 17 | rule 600240; ERiC-44.3-run | verified (2026-11-20) |
 | Schuldzinsen limit `2050.00` | For sole proprietors, Kz 234 (`E6004303`) above 2 050,00 € requires Anlage SZ (600068) and Entnahmen ≥ Kz 106 + 108 (600902). `build_xml` refuses it (`SCHULDZINSEN_LIMIT`). | 56 | rules 600068, 600902 | verified (2026-11-20) |
 | Kz 132 (GWG) without AVEÜR | Kz 132 alone (no AfA lines, no `AVEUER`) passes ERiC 44.3 validation; no EÜR or AVEÜR rule ties it to Anlage AVEÜR. `build_xml` still refuses Kz 132 until EUR-3 is decided. | 36 | ERiC-44.3-run (2026-11-20); "AVEUER - Regeln" | verified (2026-11-20) |
 | Copyright text | `Vorsatz/Copyright` is the software maker's notice; FreiBuch sends `(c) FreiBuch contributors, AGPL-3.0`. | — | "Vorsatz - Felder" | verified (2026-11-20) |

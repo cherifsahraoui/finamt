@@ -27,14 +27,14 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 1 | EUR-1 | EÜR Kennzahlen per Anlage EÜR 2025 | M | done (2026-11-18) | — |
 | 2 | UST-1 | UStVA: import VAT in Kz 62, not Kz 66 | S | done (2026-11-20) | — |
 | 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | done (2026-11-20) | — |
-| 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | **ready** | — |
-| 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | ready | — |
+| 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | done (2026-11-20) | — |
+| 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | **ready** | — |
 | 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | ready | UST-2 (done) |
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | ready | UST-2 (done) |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | ready | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
-| 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 |
+| 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 (done) |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
 | 13 | EUR-4 | EÜR ELSTER XML builder | L | done (2026-11-20) | — |
 | 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | ERiC validation done; test send needs owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
@@ -56,6 +56,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | done (2026-11-20) | — |
 | 31 | UI-8 | UI: the old UI's remaining features (manual entry, projects, partners, XML) | M | ready | — |
 | 32 | CLN-5 | Remove old UI, rename project to FreiBuch (fork of finamt) | L | waiting | UI-6 (retire old SPA) |
+| 33 | EUR-8 | Kleinunternehmer flag per year in Stammdaten, used by the EÜR page | S | ready | — |
 
 ---
 
@@ -160,7 +161,13 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-2: VAT lines and Kleinunternehmer mode
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
+- **Result**: `generate_eur(receipts, year, kleinunternehmer=False)`. Regelbesteuerung: Kz 140 /
+  Kz 185 come from the lines' VAT (`EURReport.kz140_ust_vereinnahmt`, `kz185_vorsteuer`, also in
+  `kz_totals()`); `vat_payment` → Kz 186 and `vat_refund` → Kz 141 at the total amount; `gewinn` =
+  `total_betriebseinnahmen − total_betriebsausgaben`. Kleinunternehmer: sales → Kz 111, all amounts
+  gross from `total_amount`, GWG limit compared with the gross cost (conservative: more review).
+  EÜR page shows the VAT lines. Tests: `tests/unit/test_eur_vat.py`. Wiring the flag: EUR-8.
 - **Goal**: make the EÜR profit match the official form (D6) and support Kleinunternehmer (D7).
 - **Verified rules**: tax-rules.md rows "VAT is income/expense", Kz 111, 112, 140, 141, 185, 186,
   Kleinunternehmer.
@@ -181,8 +188,6 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   → Kz 111 = 1000, expenses 119, gewinn 881. Update existing gewinn assertions that assumed the net method.
 - **Done when**: tests pass; tax-rules row "VAT is income/expense" → `verified`; NOTICE.md;
   README status table.
-- **Note (2026-11-20)**: until this is done, `eur_elster.build_xml` refuses any report with
-  Kz 112 but no Kz 140 (ERiC rule 600240), i.e. every report of a Regelbesteuerer with sales.
 
 ### EUR-3: assets above 800 € (AfA / Sammelposten)
 
@@ -208,7 +213,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   because ERiC requires them for sole proprietors. `eric_validate(xml)` runs ERiC without sending.
   Facts and ERiC rule numbers: tax-rules.md → "Anlage EÜR 2025: lines and rules used by …".
 - **Refuses** (so nothing invalid or guessed is built): open `review_lines`; `year != FORM_YEAR`;
-  Kz 112 without Kz 140 (until EUR-2); AfA / GWG Kz 130/131/132/136/137 (EUR-3); Kz 151 (EUR-7);
+  Kz 112 without Kz 140 (ERiC rule 600240); AfA / GWG Kz 130/131/132/136/137 (EUR-3); Kz 151 (EUR-7);
   Kz 234 above 2 050 € (needs Anlage SZ); `test=False` (live disabled, D3).
 - **Checked**: XSD and ERiC 44.3 validation (nothing sent) for the golden report and four other
   reports, with a placeholder Hersteller-ID. Tests: `tests/unit/test_eur_elster.py` (golden XML,
@@ -243,7 +248,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-5: 10-day rule for recurring payments
 
-- **Status**: ready after EUR-2 · **Size**: S
+- **Status**: ready · **Size**: S
 - **Goal**: regularly recurring income and expenses paid within 10 days around 1 January belong to the
   year they relate to (§ 11 Abs. 1 S. 2, Abs. 2 S. 2 EStG; EÜR guide). Typical case: the December
   UStVA payment made on 10 January.
@@ -253,6 +258,20 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   summary.
 - **Tests**: VAT payment for December dated 10 Jan of the next year counts in the earlier year;
   dated 11 Jan does not.
+
+### EUR-8: Kleinunternehmer flag per year
+
+- **Status**: ready · **Size**: S
+- **Goal**: decision D7 wants a per-year flag in the taxpayer profile. `generate_eur` has
+  `kleinunternehmer=` since EUR-2, but every caller still uses Regelbesteuerung.
+- **Verified rules**: tax-rules.md section "Kleinunternehmer (§ 19 UStG)".
+- **Files**: `src/finamt/ui/web/` (Stammdaten form: list of years with § 19; EÜR page and
+  overview pass the flag), `tests/unit/test_web_ui.py`; later CLI-1's `finamt eur`.
+- **Steps**: store the years in the taxpayer metadata (new field, e.g. `kleinunternehmer_jahre`,
+  without breaking the old UI's `GET /taxpayer`); `/app/euer?jahr=Y` calls
+  `generate_eur(..., kleinunternehmer=Y in jahre)`; the UStVA page shows a note that no UStVA is
+  due for such a year (§ 19 Abs. 1 UStG; check the exact rule in tax-rules.md first).
+- **Tests**: a year flagged → EÜR page shows Kz 111 and no Kz 140/185; unflagged → unchanged.
 
 ---
 

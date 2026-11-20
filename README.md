@@ -23,12 +23,13 @@ leave it, except for the ELSTER submission itself.
 | UStVA calculation (quarterly) | ✅ works | `finamt ustva --quarter Q --year Y` |
 | UStVA calculation (monthly) | ✅ in the web UI / API | CLI flag planned (CLI-1) |
 | UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ validates in ERiC 44.3; test mode; live needs an explicit switch ([M2](docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](docs/MANUAL-STEPS.md#m4-file-for-real)) | web UI `/app/ustva` (`finamt serve`) or API |
-| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works (VAT lines still missing, EUR-2) | web UI `/app/euer`, Python API |
-| EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs the VAT lines (EUR-2) for real data and one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
-| Credit notes, 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-2 … UST-4) | — |
+| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works, VAT lines included (Kz 140/141/185/186) | web UI `/app/euer`, Python API |
+| EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
+| Credit notes in the UStVA (negative base and tax lines) | ✅ works (UST-2) | — |
+| 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-3, UST-4) | — |
 | Writing invoices (§ 14 UStG) | ⛔ not yet (INV-1) | — |
 | Zusammenfassende Meldung for EU clients | ⛔ not yet (ZM-1) | — |
-| Kleinunternehmer (§ 19 UStG) mode | ⛔ not yet (EUR-2) | — |
+| Kleinunternehmer (§ 19 UStG) mode | 🧪 EÜR calculation only (`generate_eur(..., kleinunternehmer=True)`); setting in Stammdaten planned (EUR-8) | Python API |
 
 Out of scope: KSt, GewSt, E-Bilanz, Jahresabschluss, Einkommensteuer. The upstream code for
 these lives in [`legacy/`](legacy/README.md) and is not installed.
@@ -38,13 +39,12 @@ these lives in [`legacy/`](legacy/README.md) and is not installed.
 The work is split into small tasks that an AI agent (or a person) can pick up one at a time.
 The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The next steps:
 
-1. **UST-2**: credit notes in the UStVA; always send Kz 83
-2. **EUR-2**: VAT lines and Kleinunternehmer mode in the EÜR
-3. **CLI-1**: `finamt eur`, monthly UStVA, filing-period hint
-4. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
-5. **INV-1**: outgoing invoices with gapless numbering
-6. **ZM-1**: Zusammenfassende Meldung
-7. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
+1. **CLI-1**: `finamt eur`, monthly UStVA, filing-period hint
+2. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
+3. **INV-1**: outgoing invoices with gapless numbering
+4. **ZM-1**: Zusammenfassende Meldung
+5. **EUR-8**: Kleinunternehmer setting per year in Stammdaten
+6. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
 
 Decisions that shape the project (CLI first, no live filing by default, …) are in
 [docs/DECISIONS.md](docs/DECISIONS.md).
@@ -120,7 +120,7 @@ Each receipt has a category and an optional subcategory. For purchases, they dec
 | `marketing` | `advertising` `print_media` `trade_fairs` `sponsorship` `gifts` | 224; gifts → review |
 | `donations` | `charitable` `political` `church` | review |
 | `public_fees` | `broadcasting_fee` `ihk_hwk` `berufsgenossenschaft` `other_public_fee` | 223 |
-| `tax_settlement` | `vat_refund` `vat_payment` `income_tax` `trade_tax` `other_tax` | review (Kz 186/141 in EUR-2) |
+| `tax_settlement` | `vat_refund` `vat_payment` `income_tax` `trade_tax` `other_tax` | `vat_payment` → Kz 186, `vat_refund` → Kz 141; other taxes: review |
 | `capital_movement` | `owner_equity` `shareholder_loan` `withdrawal` | review (not a business income/expense) |
 | `other` | `membership_fees` `sundry` | 183; membership_fees → 223 |
 
