@@ -10,7 +10,7 @@ generated XML are git-ignored.
 | # | Step | When | Unblocks | Your time |
 |---|---|---|---|---|
 | M1 | [Put your Hersteller-ID and certificate PIN into `.env`](#m1-hersteller-id-and-certificate-pin) | when available (**pending**, see below) | M2; ERiC validation of real data; all sending. Not needed for coding or tests | 5 min (+ waiting for the Hersteller-ID) |
-| M2 | [First test submission](#m2-first-test-submission) | once | UST-5 | 5 min |
+| M2 | [First test submission](#m2-first-test-submission) (UStVA and EÜR) | once | UST-5, EUR-6 | 10 min |
 | M3 | [Decide how assets above 800 € are depreciated](#m3-decide-asset-depreciation) | once | EUR-3 | 10 min |
 | M4 | [File for real (live)](#m4-file-for-real) | every period | — | 10 min per filing |
 | M5 | [Yearly update: new ERiC and forms](#m5-yearly-update) | yearly | YEAR-1 | 10 min |
@@ -20,7 +20,7 @@ generated XML are git-ignored.
 
 | Request | Requested | Status | Blocks | What the agent does meanwhile |
 |---|---|---|---|---|
-| Hersteller-ID for FreiBuch (M1) | 2026-11-20 | **pending**, owner to apply in the developer area and report back | M2 (UST-5 server test), EUR-4 ERiC validation, all sending | Works on EUR-4, EUR-3 and other offline tasks. ERiC validation tests skip with a reason until the ID is in `.env` |
+| Hersteller-ID for FreiBuch (M1) | 2026-11-20 | **pending**, owner to apply in the developer area and report back | M2 (UST-5 and EUR-6 server tests), all sending | Offline tasks. EUR-4 is done: its XML validates in ERiC locally with a placeholder ID (nothing sent). The ERiC test in `tests/unit/test_eur_elster.py` skips with a reason until the ID is in `.env` |
 
 When the owner has the ID: put it in `.env` (M1), then tell the agent "M1 done". The agent then
 runs the ERiC validation tests and updates this table.
@@ -37,6 +37,8 @@ runs the ERiC validation tests and updates this table.
 - The EÜR schema facts (old step "collect the EÜR facts") are recorded in
   [tax-rules.md](tax-rules.md#anlage-eür-2025-xml-datenartversion-euer_2025-for-eur-4); EUR-4 is ready.
 - ERiC 44 changed its API; FreiBuch was adapted (task ERIC-1).
+- The **Anlage EÜR 2025** XML builder exists (EUR-4). Its XML validates in ERiC 44.3; nothing was
+  sent. The one server test is part of M2.
 
 ### What is in `private/`
 
@@ -54,10 +56,10 @@ runs the ERiC validation tests and updates this table.
 
 ### Two facts that changed the plan
 
-- **Your own Hersteller-ID is required for real ERiC validation and for any sending, including
-  tests.** The demo ID `74931` from older docs is blocked: ERiC refuses it already during validation
-  (`610301202`). Coding and the offline test suite don't need it, so you can add it later.
-  Do not use a made-up ID to send anything.
+- **Your own Hersteller-ID is required for any sending, including tests.** The demo ID `74931`
+  from older docs is blocked: ERiC refuses it already during validation (`610301202`). Local
+  validation (nothing sent) also works with a placeholder such as `00000`. Coding and the offline
+  test suite don't need the ID, so you can add it later. Do not use a made-up ID to send anything.
 - **Use the test tax number for every test.** Only Bayern has them; they work for UStVA, USt and
   EÜR. `.env` uses `9198011310010` (198/113/10010, test Finanzamt 9198). ELSTER deletes everything
   sent to a test Finanzamt, even a case without Testmerker, so a mistake can't become a filing.
@@ -101,6 +103,15 @@ and `FINAMT_ELSTER_CERT_PASSWORD=123456`, run step 2 again, then switch both lin
 
 **Hand back** (UST-5): the printed lines (`success`, `telenummer`, error text). Remove nothing;
 they contain only the test tax number.
+
+Then the same for the **Anlage EÜR 2025** (task EUR-6). The script builds a fixed made-up EÜR
+(12 000 € income plus VAT, a few expenses) with the Testmerker for the test Finanzamt and refuses a
+real tax number:
+```powershell
+uv run --env-file .env python scripts/eur_test_submission.py          # 3. validate, nothing sent
+uv run --env-file .env python scripts/eur_test_submission.py --send   # 4. test submission
+```
+**Hand back** (EUR-6): the printed lines of step 4.
 
 ## M3: Decide asset depreciation
 
