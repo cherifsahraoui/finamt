@@ -156,6 +156,10 @@ Branch `baseline/fable-1`:
 - `src/finamt/tax/eur.py`: such sales go to Kz 103.
 - Web UI: "USt-Behandlung" select on the receipt form; UStVA page lists the warnings.
 
+### Zusammenfassende Meldung (task ZM-1, 2026-11-20)
+- New `src/finamt/tax/zm.py` (FreiBuch's own code), exported from `finamt.tax`: ZM sums per
+  customer VAT ID and quarter. No submission yet.
+
 ### Outgoing invoices (task INV-1, 2026-11-20)
 - New package `src/finamt/invoicing/` and CLI group `finamt invoice` (FreiBuch's own code).
 - `src/finamt/storage/sqlite.py` (upstream file): new tables `invoice_sequence` and `invoices`

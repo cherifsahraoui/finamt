@@ -16,7 +16,8 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `agents/` | Extraction: `agent.py` (`FinanceAgent.process_receipt`), `pipeline.py` (4 sequential LLM agents), `llm_backend.py`/`llm_caller.py` (mlx-lm / transformers), `prompts.py` (`RECEIPT_CATEGORIES`), `config.py` (pydantic settings, env prefix `FINAMT_`). |
 | `ocr_processor.py` | PDF text extraction (PyMuPDF) with PaddleOCR / Tesseract fallback. |
 | `storage/` | `sqlite.py` (`SQLiteRepository`), `project.py` (`~/.finamt/<project>/` layout), `base.py` (repository protocol), `get_repository()`. |
-| `tax/ustva.py` | `generate_ustva()` → `USTVAReport` (per-rate input/output VAT). |
+| `tax/ustva.py` | `generate_ustva()` → `USTVAReport` (per-rate input/output VAT; 0 %, tax-free and reverse-charge amounts from `ReceiptData.vat_treatment`). |
+| `tax/zm.py` | `generate_zm(receipts, year, quarter)` → `ZMReport`: EU B2B services per customer VAT ID (ZM-1). No ELSTER/BZSt boundary yet. |
 | `tax/eur.py` | `generate_eur()` → `EURReport`: EÜR lines per Anlage EÜR 2025 Kennzahl (`KZ_LABELS`, `_PURCHASE_KZ`, `_PURCHASE_SUB_KZ`); ambiguous receipts in `review_lines`, excluded from the profit. |
 | `tax/elster.py` | ELSTER XML for UStVA and annual USt (E50), Kz mapping `_ustva_kennzahlen`, signer, HTTP client, ERiC client. |
 | `tax/eric_wrapper.py` | ctypes bridge to the ERiC shared library (`EricSession`, `EricBuffer`, `EricCertificate`). Targets the ERiC 44 API (no transfer handle). |
@@ -122,5 +123,5 @@ uv run finamt --help                      # CLI
 - EÜR: assets > 800 € go to review (EUR-3).
 - UStVA ignores receipts with zero/no VAT (0 % / reverse-charge sales) and rate `unknown`.
 - `vat_splits` (mixed-rate receipts) are stored but not used by tax code.
-- No ZM, no reverse-charge flag (so no reverse-charge invoice note yet).
+- ZM is calculated (`tax/zm.py`) but cannot be sent; invoices have no reverse-charge note yet.
 - Upload jobs live in memory: a server restart drops an unfinished job (saved receipts stay).

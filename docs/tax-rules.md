@@ -106,7 +106,9 @@ on 2026-11-20 (kept in the git-ignored `private/` folder, never committed):
 
 | value | rule | legal source | year | status |
 |---|---|---|---|---|
-| quarterly, 25th day | B2B services under § 3a Abs. 2 to EU recipients who owe the tax: ZM by the 25th day after the end of each quarter, to the BZSt. | § 18a Abs. 2 UStG | current | verified (2026-11-18) |
+| quarterly, 25th day | B2B services under § 3a Abs. 2 to EU recipients who owe the tax: ZM by the 25th day after the end of each quarter, to the BZSt. Code: `tax.zm.generate_zm` sums the Kz 21 receipts per customer VAT ID; `due_date` = quarter end + 25 days. | § 18a Abs. 2 UStG | current | verified (2026-11-18); code ZM-1 (2026-11-20) |
+| ZM due date on a weekend / holiday | Whether the deadline moves to the next working day is not applied by the code. | (§ 108 Abs. 3 AO, not read) | current | TODO: read § 108 AO and decide |
+| ZM amounts | Code sums to cents (`ROUND_HALF_UP`). Whether the ZM reports whole euros, and how they are rounded, is not sourced; needed for the BZSt/ELSTER boundary (`zm_elster.py`). | § 18a UStG; BZSt ZM form (not read) | current | TODO |
 | monthly, 50 000 € | Intra-EU supplies of goods: monthly by the 25th day; quarterly allowed if not more than 50 000 € per quarter. | § 18a Abs. 1 UStG | current | verified (2026-11-18) |
 
 ## EÜR method (§ 4 Abs. 3, § 11 EStG, § 60 EStDV)

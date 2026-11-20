@@ -32,7 +32,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | done (2026-11-20) | UST-2 (done) |
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | done (2026-11-20) | UST-2 (done) |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | done (2026-11-20) | — |
-| 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | ready | UST-4 (done) |
+| 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | done (2026-11-20) | UST-4 (done) |
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 (done) |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
@@ -416,7 +416,10 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### ZM-1: Zusammenfassende Meldung
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
+- **Result**: `tax/zm.py` (`generate_zm`, `ZMReport`, `ZMLine`), exported from `finamt.tax`;
+  tests `tests/unit/test_zm.py`. Same receipts as UStVA Kz 21 (reverse charge, EU customer).
+  Open before a `zm_elster.py`: ZM amount format and the weekend rule (tax-rules.md TODO rows).
 - **Goal**: aggregate EU B2B service sales (reverse charge) per customer USt-IdNr and quarter;
   due on the 25th day after the quarter (§ 18a Abs. 2, verified).
 - **Files**: new `src/finamt/tax/zm.py` (+ later `zm_elster.py` in the `eur_elster.py` pattern), tests.
