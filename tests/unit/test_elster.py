@@ -241,9 +241,50 @@ class TestUstvaKennzahlen:
         assert "Kz86" in kz
 
     def test_empty_report_no_kz(self):
+        # Kz 83 must always be filled in (USt1A-2026 Zeile 50), "0.00" for an empty period.
         report = generate_ustva([], Q1_S, Q1_E)
         kz = _ustva_kennzahlen(report)
-        assert kz == {}
+        assert kz == {"Kz83": "0.00"}
+
+    def test_credit_note_reduces_kz81(self):
+        # § 17 Abs. 1 UStG: credit notes go into the base and tax lines themselves.
+        receipts = [
+            _receipt(total_amount="1190.00", vat_amount="190.00", receipt_type="sale"),
+            _receipt(total_amount="-595.00", vat_amount="-95.00", receipt_type="sale"),
+        ]
+        report = generate_ustva(receipts, Q1_S, Q1_E)
+        kz = _ustva_kennzahlen(report)
+        assert kz == {"Kz81": "500", "Kz83": "95.00"}
+
+    def test_credit_note_only_gives_negative_kz81(self):
+        receipts = [_receipt(total_amount="-595.00", vat_amount="-95.00", receipt_type="sale")]
+        report = generate_ustva(receipts, Q1_S, Q1_E)
+        kz = _ustva_kennzahlen(report)
+        assert kz == {"Kz81": "-500", "Kz83": "-95.00"}
+
+    def test_credit_note_7pct_gives_negative_kz86(self):
+        receipts = [
+            _receipt(
+                total_amount="-107.00", vat_amount="-7.00", vat_percentage="7", receipt_type="sale"
+            )
+        ]
+        kz = _ustva_kennzahlen(generate_ustva(receipts, Q1_S, Q1_E))
+        assert kz == {"Kz86": "-100", "Kz83": "-7.00"}
+
+    def test_purchase_credit_note_reduces_kz66(self):
+        receipts = [
+            _receipt(total_amount="238.00", vat_amount="38.00"),
+            _receipt(total_amount="-119.00", vat_amount="-19.00"),
+        ]
+        kz = _ustva_kennzahlen(generate_ustva(receipts, Q1_S, Q1_E))
+        assert kz == {"Kz66": "19.00", "Kz83": "-19.00"}
+
+    def test_no_kz50_or_kz37_for_credit_notes(self):
+        # Kz 50 / 37 are only for uncollectible amounts (§ 17 Abs. 2 Nr. 1 UStG).
+        receipts = [_receipt(total_amount="-595.00", vat_amount="-95.00", receipt_type="sale")]
+        kz = _ustva_kennzahlen(generate_ustva(receipts, Q1_S, Q1_E))
+        assert "Kz50" not in kz
+        assert "Kz37" not in kz
 
     def test_sale_net_rounded_down(self):
         # Net = 100.99 → should be truncated to 100

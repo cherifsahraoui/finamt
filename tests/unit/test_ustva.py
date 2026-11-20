@@ -165,6 +165,37 @@ class TestSkipping:
         report = generate_ustva([_receipt(vat_amount=None)], Q1_START, Q1_END)
         assert report.skipped_count == 1
 
+    def test_sale_credit_note_kept_with_negative_amounts(self):
+        # § 17 Abs. 1 UStG: credit notes go into their rate line as negative amounts.
+        receipts = [
+            _receipt(
+                total_amount="1190.00",
+                vat_amount="190.00",
+                vat_percentage="19",
+                receipt_type="sale",
+            ),
+            _receipt(
+                total_amount="-595.00",
+                vat_amount="-95.00",
+                vat_percentage="19",
+                receipt_type="sale",
+            ),
+        ]
+        report = generate_ustva(receipts, Q1_START, Q1_END)
+        assert report.skipped_count == 0
+        ln = report.lines["19"]
+        assert ln.sale_net == Decimal("500.00")
+        assert ln.sale_vat == Decimal("95.00")
+        assert ln.sale_count == 2
+        assert report.net_liability == Decimal("95.00")
+
+    def test_purchase_credit_note_reduces_input_vat(self):
+        receipts = [_receipt(total_amount="-119.00", vat_amount="-19.00", vat_percentage="19")]
+        report = generate_ustva(receipts, Q1_START, Q1_END)
+        assert report.lines["19"].purchase_net == Decimal("-100.00")
+        assert report.lines["19"].purchase_vat == Decimal("-19.00")
+        assert report.net_liability == Decimal("19.00")
+
     def test_skipped_and_valid_counted_separately(self):
         receipts = [
             _receipt(receipt_date=None),  # skipped

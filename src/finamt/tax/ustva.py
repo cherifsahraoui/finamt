@@ -240,7 +240,11 @@ def generate_ustva(
     Skips receipts that:
     - have no ``receipt_date``
     - fall outside the period
-    - have no VAT amount at all (no ``vat_amount`` and no ``einfuhr_vat``)
+    - have no VAT amount at all (``vat_amount`` zero or missing, and no ``einfuhr_vat``)
+
+    Credit notes (negative ``vat_amount``) are kept: changes under § 17 Abs. 1 UStG go
+    into the base and tax lines of their rate as negative amounts, in the period of the
+    change (USt1A-2026 Anleitung, see docs/tax-rules.md row "Kz 50 / Kz 37").
     """
     report = USTVAReport(period_start=period_start, period_end=period_end)
     start = _to_date(period_start)
@@ -254,7 +258,8 @@ def generate_ustva(
             report.skipped_count += 1
             continue
 
-        has_vat = bool(r.vat_amount and r.vat_amount > 0)
+        # Zero / missing VAT stays skipped until UST-3 (0 % rate, tax-free sales).
+        has_vat = bool(r.vat_amount and r.vat_amount != 0)
         ev = getattr(r, "einfuhr_vat", None)
         has_einfuhr = bool(r.is_purchase and ev and ev > 0)
 

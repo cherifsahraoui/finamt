@@ -472,7 +472,9 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
     Amounts for Kz 81/86/35 are rounded DOWN to whole euros per ELSTER spec.
     VAT amounts are rounded to 2 decimal places (cents).
 
-    ⚠  Verify these mappings against the current official UStVA form on www.elster.de.
+    Credit notes (§ 17 Abs. 1 UStG) reduce the base and tax lines themselves, so a line
+    is written whenever it is non-zero, negative values with a leading minus. Kz 83 is
+    always written ("Bitte in jedem Fall ausfüllen"). See docs/tax-rules.md.
     """
 
     def whole(d: Decimal) -> str:
@@ -486,16 +488,16 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
 
     # Standard tax rates
     ln19 = report.line_19
-    if ln19 and ln19.sale_net > 0:
+    if ln19 and ln19.sale_net != 0:
         kz["Kz81"] = whole(ln19.sale_net)  # Umsätze 19 % — Bemessungsgrundlage
 
     ln7 = report.line_7
-    if ln7 and ln7.sale_net > 0:
+    if ln7 and ln7.sale_net != 0:
         kz["Kz86"] = whole(ln7.sale_net)  # Umsätze 7 % — Bemessungsgrundlage
 
     # Other rates (Kz 35 / Kz 36)
     for rate_key, ln in report.lines.items():
-        if rate_key not in ("19", "7", "unknown") and ln.sale_net > 0:
+        if rate_key not in ("19", "7", "unknown") and ln.sale_net != 0:
             kz["Kz35"] = kz.get("Kz35", "")
             kz["Kz36"] = kz.get("Kz36", "")
             # Accumulate if multiple non-standard rates
@@ -508,19 +510,17 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
     # Import VAT (§ 15 Abs. 1 S. 1 Nr. 2 UStG) has its own line, Kz 62
     # (USt1A-2026 section F; see docs/tax-rules.md).
     invoice_input_vat = sum((ln.purchase_vat for ln in report.lines.values()), Decimal("0"))
-    if invoice_input_vat > 0:
+    # A purchase credit note reduces Kz 66 as well (non-zero, may be negative), so
+    # that Kz 83 always equals the sum of the lines written.
+    if invoice_input_vat != 0:
         kz["Kz66"] = cents(invoice_input_vat)
     if report.einfuhr_vat > 0:
         kz["Kz62"] = cents(report.einfuhr_vat)
 
-    # Net VAT balance — Kz83 is mandatory whenever there is any reportable
-    # VAT activity. For a genuinely empty report (no turnover, no input tax)
-    # we omit it entirely so a blank/Null period doesn't emit a spurious
-    # "0.00" Kz83.
+    # Kz 83 must always be filled in, "0.00" for an empty period (USt1A-2026 Zeile 50).
     # Positive = Zahllast (payment due); negative = Überschuss (refund)
     net = report.total_output_vat - report.total_input_vat
-    if kz or net != 0:
-        kz["Kz83"] = cents(net)
+    kz["Kz83"] = cents(net)
 
     return kz
 
