@@ -54,7 +54,7 @@ on 2026-11-20 (kept in the git-ignored `private/` folder, never committed):
 | value | rule | legal source | year | status |
 |---|---|---|---|---|
 | quarter | Default Voranmeldungszeitraum is the Kalendervierteljahr. CLI `--quarter`, API `quarter`. | § 18 Abs. 2 S. 1 UStG | current | verified (2026-11-18) |
-| > 9 000 € | Monthly if prior-year tax was more than 9 000 €. No code chooses the period automatically. | § 18 Abs. 2 S. 2 UStG | current | verified (2026-11-18); code: CLI-1 |
+| > 9 000 € | Monthly if prior-year tax was more than 9 000 €. Code: `finamt ustva --suggest-period` prints a hint (`cli.MONTHLY_THRESHOLD`, also `EXEMPTION_THRESHOLD`, `SURPLUS_THRESHOLD`); nothing chooses the period automatically. | § 18 Abs. 2 S. 2 UStG | current | verified (2026-11-18); code: CLI-1 (2026-11-20) |
 | ≤ 2 000 € | Finanzamt may exempt from Voranmeldungen if prior-year tax was not more than 2 000 €. | § 18 Abs. 2 S. 3 UStG | current | verified (2026-11-18) |
 | > 9 000 € surplus | May opt for monthly if prior-year surplus in the taxpayer's favour was more than 9 000 €. | § 18 Abs. 2a UStG | current | verified (2026-11-18) |
 | new business | Monthly in the year of starting and the following year (S. 4). For 2021–2026, S. 4 is replaced by a projection: the actual tax is converted to an annual figure, or the expected tax of the starting year is used. | § 18 Abs. 2 S. 4 and S. 6 UStG | 2021–2026 | verified (2026-11-18) |

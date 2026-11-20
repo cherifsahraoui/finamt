@@ -118,6 +118,11 @@ Branch `baseline/fable-1`:
   `total_betriebseinnahmen`, `total_betriebsausgaben`; the summary drops the net-method warning.
 - `src/finamt/ui/web/templates/euer.html`: shows Kz 140/185 and the totals including VAT.
 
+### CLI: EÜR, monthly UStVA, filing-period hint (task CLI-1, 2026-11-20)
+- `src/finamt/cli.py`: new command `finamt eur` (exit code 1 while receipts need review);
+  `finamt ustva` gained `--month` and `--suggest-period`. Upstream's `--quarter` default (1) is
+  kept when neither is given.
+
 ### EÜR ELSTER XML (task EUR-4, 2026-11-20)
 - `src/finamt/tax/eur_elster.py`: `build_xml(report, taxpayer, *, entnahmen, einlagen,
   hersteller_id, test=True)` builds the Anlage EÜR 2025 envelope (datenartVersion `EUER_2025`)

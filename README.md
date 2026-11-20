@@ -21,9 +21,10 @@ leave it, except for the ELSTER submission itself.
 | Read receipts and invoices (PDF/scan) with OCR + a local LLM | ✅ works | `finamt process`, `finamt batch`, web UI |
 | Store receipts, de-duplicate, categorise | ✅ works | local SQLite in `~/.finamt/<project>/` |
 | UStVA calculation (quarterly) | ✅ works | `finamt ustva --quarter Q --year Y` |
-| UStVA calculation (monthly) | ✅ in the web UI / API | CLI flag planned (CLI-1) |
+| UStVA calculation (monthly) | ✅ works | `finamt ustva --month M --year Y` |
+| Monthly or quarterly? (§ 18 Abs. 2 UStG) | ✅ hint from the prior year's tax | `finamt ustva --suggest-period --year Y` |
 | UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ validates in ERiC 44.3; test mode; live needs an explicit switch ([M2](docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](docs/MANUAL-STEPS.md#m4-file-for-real)) | web UI `/app/ustva` (`finamt serve`) or API |
-| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works, VAT lines included (Kz 140/141/185/186) | web UI `/app/euer`, Python API |
+| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works, VAT lines included (Kz 140/141/185/186) | `finamt eur --year Y`, web UI `/app/euer` |
 | EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
 | Credit notes in the UStVA (negative base and tax lines) | ✅ works (UST-2) | — |
 | 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-3, UST-4) | — |
@@ -39,12 +40,11 @@ these lives in [`legacy/`](legacy/README.md) and is not installed.
 The work is split into small tasks that an AI agent (or a person) can pick up one at a time.
 The full list, with steps and tests, is in **[docs/TODO.md](docs/TODO.md)**. The next steps:
 
-1. **CLI-1**: `finamt eur`, monthly UStVA, filing-period hint
-2. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
-3. **INV-1**: outgoing invoices with gapless numbering
-4. **ZM-1**: Zusammenfassende Meldung
-5. **EUR-8**: Kleinunternehmer setting per year in Stammdaten
-6. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
+1. **UST-3 / UST-4**: 0 % sales and reverse charge for EU clients
+2. **INV-1**: outgoing invoices with gapless numbering
+3. **ZM-1**: Zusammenfassende Meldung
+4. **EUR-8**: Kleinunternehmer setting per year in Stammdaten
+5. **EUR-6 / EUR-7**: EÜR test send by the owner; Kz 151 needs the Zeile 42 split
 
 Decisions that shape the project (CLI first, no live filing by default, …) are in
 [docs/DECISIONS.md](docs/DECISIONS.md).
@@ -76,22 +76,18 @@ On first use, OCR and LLM models are downloaded from HuggingFace (about 4 GB, ca
 2. **UStVA** every quarter (or month, if your prior-year VAT was over 9 000 €, § 18 Abs. 2 UStG),
    due on the 10th day after the period:
    ```bash
+   finamt ustva --suggest-period --year 2025          # monthly or quarterly?
    finamt ustva --quarter 1 --year 2025 --output ustva_q1_2025.json
+   finamt ustva --month 3 --year 2025                 # monthly filers
    ```
    Submit from the web UI in **test mode** first. For a real filing, follow
    [M4](docs/MANUAL-STEPS.md#m4-file-for-real) (live needs `FINAMT_ALLOW_LIVE_SUBMISSION=1`).
 3. **Annual USt** from the web UI (Umsatzsteuererklärung).
-4. **EÜR** for the year (Python until `finamt eur` exists):
-   ```python
-   from datetime import date
-   from finamt.storage import get_repository
-   from finamt.tax import generate_eur
-
-   with get_repository() as repo:
-       receipts = list(repo.find_by_period(date(2025, 1, 1), date(2025, 12, 31)))
-   report = generate_eur(receipts, 2025)
-   print(report.summary())          # Kennzahlen per Anlage EÜR 2025 + "ZU PRÜFEN" list
+4. **EÜR** for the year (Kennzahlen per Anlage EÜR 2025 plus the "ZU PRÜFEN" list):
+   ```bash
+   finamt eur --year 2025 --output eur_2025.json      # add --kleinunternehmer under § 19 UStG
    ```
+   The command exits with code 1 while anything is still under ZU PRÜFEN.
    Anything FreiBuch can't classify safely (assets over 800 €, meals, gifts, donations, tax
    payments, private deposits/withdrawals) appears under **ZU PRÜFEN** and is *not* counted until
    you decide. Until EÜR submission exists, copy the Kennzahlen into ELSTER by hand.

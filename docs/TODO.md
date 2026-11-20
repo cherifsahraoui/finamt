@@ -28,8 +28,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 2 | UST-1 | UStVA: import VAT in Kz 62, not Kz 66 | S | done (2026-11-20) | — |
 | 3 | UST-2 | UStVA: credit notes in the base lines; always send Kz 83 | S | done (2026-11-20) | — |
 | 4 | EUR-2 | EÜR: VAT lines (140/141/185/186) and Kleinunternehmer mode | M | done (2026-11-20) | — |
-| 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | **ready** | — |
-| 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | ready | UST-2 (done) |
+| 5 | CLI-1 | CLI: `finamt eur`, `finamt ustva --month`, period hint | M | done (2026-11-20) | — |
+| 6 | UST-3 | UStVA: 0 % rate (Kz 87) and tax-free sales (Kz 48) | S | **ready** | UST-2 (done) |
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | ready | UST-2 (done) |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | ready | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
@@ -279,7 +279,10 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CLI-1: `finamt eur`, monthly UStVA, period hint
 
-- **Status**: ready · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
+- **Result**: all three steps, plus `finamt eur --kleinunternehmer` (EUR-2's mode). Thresholds are
+  `Decimal` constants in `cli.py` pointing to tax-rules.md. Tests: `TestCliEur`,
+  `TestCliUstvaMonth`, `TestCliSuggestPeriod` in `tests/e2e/test_cli_inprocess.py`.
 - **Goal**: the CLI is the main interface (D2). Add the missing commands.
 - **Files**: `src/finamt/cli.py`, `tests/e2e/test_cli_inprocess.py`.
 - **Steps**:
