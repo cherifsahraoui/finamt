@@ -167,7 +167,7 @@ Labels shortened. Where the line number is given, it is the 2025 form line.
 | Testmerker `700000004` | Marks a test submission (defined in `ericdef.h`); ELSTER deletes test cases instead of processing them. Not allowed in a real filing. `eur_elster` refuses test mode without it. Used in the official UStVA 2026 and EÜR 2025 examples. | ERiC-44.3 `ERiC-Entwicklerhandbuch.pdf` Kap. 6.5.5; `Beispiele/UStVA_2026.xml`, `EUER_2025_ok.xml` | — | verified (2026-11-20) |
 | Namespace `http://www.elster.de/elsterxml/schema/v11` | Envelope namespace (`<Elster>`, `TransferHeader version="11"`). | ERiC-44.3 examples, handbook Abb. 6-7 | — | verified (2026-11-20) |
 | UStVA payload | Verfahren `ElsterAnmeldung`, DatenArt `UStVA`, datenartVersion `UStVA_<year>` (from 2016), root `Anmeldungssteuern version="<year>"` in namespace `http://finkonsens.de/elster/elsteranmeldung/ustva/v<year>`. | ERiC-44.3 `Datenartversionmatrix.ods`; `Beispiele/UStVA_2026.xml` | 2016– | verified (2026-11-20) |
-| Hersteller-ID | Every software maker needs its own Hersteller-ID, for real **and** test cases. The demo ID `74931` is blocked: ERiC returns `610301202 ERIC_IO_TESTHERSTELLERID_GESPERRT` even for validation only. | ERiC-44.3 handbook Kap. 6.5.3; ERiC-44.3-run | — | verified (2026-11-20) |
+| Hersteller-ID | Every software maker needs its own Hersteller-ID, for real **and** test cases. The demo ID `74931` is blocked: ERiC returns `610301202 ERIC_IO_TESTHERSTELLERID_GESPERRT` even for validation only. A placeholder such as `00000` passes local validation (`ERIC_VALIDIERE`, nothing sent; EÜR 2025, 2026-11-20); never send with it. | ERiC-44.3 handbook Kap. 6.5.3; ERiC-44.3-run | — | verified (2026-11-20) |
 | Test tax numbers | Only Bayern has test tax numbers. They are valid for USt annual returns, EÜR and Anmeldungssteuern (UStVA), e.g. `198/113/10010` = ELSTER `9198011310010` (Finanzamt `9198`, Bundesland `09`). Anything sent to a test Finanzamt is deleted, even a real case. | ERiC-44.3 handbook Kap. 6.5.1, 6.5.4; `Finanzamtsdaten.ods` | — | verified (2026-11-20) |
 | ERiC 44 API | `EricBearbeiteVorgang` takes 7 arguments; the transfer handle was removed. ERiC 44 libraries are not compatible with ERiC 43. | ERiC-44.3 `ERiC-Releasenotes.pdf` 5.2.6, 5.2.8; `include/ericapi.h` | ERiC 44+ | verified (2026-11-20); `eric_wrapper.py` adapted |
 | EÜR `datenartVersion` | `EUER_<year>` (from 2015; new Nutzdaten structure from 2021), e.g. `EUER_2025`. Verfahren `ElsterErklaerung`, DatenArt `EUER`. | ERiC-44.3 `Datenartversionmatrix.ods`; `Beispiele/EUER_2025_ok.xml` | 2025 | verified (2026-11-20) |
@@ -183,7 +183,7 @@ example validates offline in ERiC 44.3 (ERiC-44.3-run).
 | value | rule |
 |---|---|
 | payload root | `<E77 xmlns="http://finkonsens.de/elster/elstererklaerung/euer/e77/v2025" version="2025">` inside `Nutzdaten`. Children: `EUER` (the form; mandatory), optional `AVEUER`, `SZ`, `SE`, `AVSE`, `ER`, `LuF`, then `Vorsatz` (mandatory). |
-| `Vorsatz` | `Unterfallart` = `77`, `Vorgang` = `01`, `StNr` (13 digits), `Zeitraum` (year), `AbsName`, `AbsStr`, `AbsPlz`, `AbsOrt`, `Copyright`, `OrdNrArt` = `S`, optional `Rueckuebermittlung/Bescheid`. See the example for the order. |
+| `Vorsatz` | `Unterfallart` = `77`, `Vorgang` = `01`, `StNr` (13 digits, pattern `[0-9]{4}0[0-9]{8}`), `Zeitraum` (year), `AbsName` (max 45), `AbsStr` (max 30), `AbsPlz` (5 digits), `AbsOrt` (max 29), `Copyright` (max 50), `OrdNrArt` = `S`, `Rueckuebermittlung/Bescheid`, in this order. `Bescheid` is **mandatory** (rule 10438) and must be `2` = no: the EÜR cannot request a notice (rule 600044). |
 | `NutzdatenHeader` | `Empfaenger id="F"` = the 4-digit Finanzamt number (first 4 digits of `StNr`). |
 | decimal separator | **comma** (`10,00`), unlike the UStVA (decimal point). |
 | format `P` | amount with 2 decimals, sign allowed, 0 allowed. |
@@ -239,7 +239,32 @@ example validates offline in ERiC 44.3 (ERiC-44.3-run).
 | 199 | `BAus/Summe_BAus/E6005301` | P | 75 |
 
 Each `…/Sum` context also has `…/Einz` siblings (up to 99 single entries) in the XSD; the example
-sends only `Sum`. Element **order** inside each context follows `E77-2025.xsd`: EUR-4 must take it
-from there (or emit in example order) and prove it with an ERiC validation test.
-The profit lines (`Ermittlung_Gewinn/Uebertrag/E6005501`, `E6005601` in the example) are not yet in this
-register: EUR-4 must add them with their form lines before use.
+sends only `Sum`. Element **order** inside each context follows `E77-2025.xsd`; the table above is in
+that order (checked by walking the XSD, 2026-11-20). `eur_elster.py` emits only `Sum`.
+
+### Anlage EÜR 2025: lines and rules used by `eur_elster.build_xml` (EUR-4)
+
+Source as above, plus ERiC-44.3-run: XML built by `build_xml` validates against
+`elster11_E77_2025_extern.xsd` and in ERiC 44.3.6.0 (`ERIC_VALIDIERE`, nothing sent, placeholder
+Hersteller-ID) for income-only, loss, empty and 33-Kennzahl reports, 2026-11-20. "Rule" = ERiC
+rule number in sheet "EUER - Regeln"; all are of type *Fehler* (error) unless stated.
+
+| value | rule / element | form line | source | status |
+|---|---|---|---|---|
+| `Allg` (mandatory fields) | `E6000016` name (rule 600035), `E6000017` Art des Betriebs, max 25 (600010), `E6000602` Rechtsform (600065), `E6000603` Einkunftsart (600078), `E6000604` Betriebsinhaber (600079), `E6000019` Grundstücke entnommen/veräußert (`1` ja, `2` nein). Optional and not sent: `E6000011` Vorname, `E6000404` W-IdNr., `E6000026` Leitsteuernummer (only needed for a new case without StNr, rule 600011), `E6000502` Betrieb beendet. | 1–11 | "EUER - Felder", "EUER - Regeln" | verified (2026-11-20) |
+| Rechtsform codes for one person | Code list `RECHTSFORM_EUER_V2_TID`: `110`, `120`, `130`, **`140` Angehörige(r) der freien Berufe**, `150`, `160`, `190`. Einkunftsart `3` = Selbständige Arbeit (`2` Gewerbebetrieb). Betriebsinhaber `1` = steuerpflichtige Person; any other value gives hint 600031. | 7–9 | "Benutzerdefinierte Typen"; `E77-2025.xsd` enumerations | verified (2026-11-20) |
+| Kz 159 total | `E6001201` = sum of all Betriebseinnahmen lines (rule 600271). | 23 | rule 600271 | verified (2026-11-20) |
+| Kz 199 total | `E6005301` = sum of the Betriebsausgaben lines (rule 600614). **Kz 164 and Kz 165** (non-deductible gifts / entertainment, left column of lines 62/63) are **not** part of it. | 75 | rule 600614 | verified (2026-11-20) |
+| Zeile 76 / 77 | `Ermittlung_Gewinn/Uebertrag/E6005501` = Kz 159 (rules 604029/604030), `…/E6005601` = Kz 199 (604039/604040). Format P. | 76, 77 | "EUER - Felder"; rules | verified (2026-11-20) |
+| Zeile 92 | `Ermittlung_Gewinn/Korrektur_GuV/E6006801` "Korrigierter Gewinn/Verlust", mandatory for non-corporations (600640). Equals line 76 − 77 when lines 78–91 are empty (600648). Format P. | 92 | rules 600640, 600648 | verified (2026-11-20) |
+| Zeile 95, Kz 293 | `Ermittlung_Gewinn/Stpfl_GuV/E6007002`, mandatory (600641), = line 92 + the correction amounts of lines 93/94 (600644). Format P. | 95 | "EUER - Kennzahlen"; rules | verified (2026-11-20) |
+| Zeile 96, Kz 271 | `…/Stpfl_GuV/E6007102` Hinzurechnung § 4 Abs. 4a EStG (format %). Not sent by `build_xml` (only relevant with Schuldzinsen above 2 050 €, which it refuses). | 96 | as above | verified (2026-11-20) |
+| Zeile 97, Kz 219 | `…/Stpfl_GuV/E6007202` "Steuerpflichtiger Gewinn/Verlust", mandatory (600642), = line 95 + line 96 (600645). Format P. | 97 | as above | verified (2026-11-20) |
+| Zeilen 106 / 107, Kz 122 / 123 | `Zus_Angabe_EinzelUntern/Entnahme_Einlage/Entnahme/Sum/E6006601` (Entnahmen incl. Sach-, Leistungs- und Nutzungsentnahmen) and `…/Einlage/Sum/E6006701` (Einlagen). Format %. For Rechtsform group TID **both are mandatory** (600904, "zwingend einzutragen (§ 4 Absatz 4a Satz 6 EStG)"); `0,00` is accepted. Einlagen must not be lower than Kz 147 (600903). Not derived from receipts: `build_xml` takes them as arguments. | 106, 107 | rules 600903, 600904; ERiC-44.3-run | verified (2026-11-20) |
+| Kz 153 (Zeile 42) | `BAus/Raumkosten_u_sonst/Davon_Erhalt_Grundstueck/Sum/E6004015` "in Zeile 41 enthaltene Erhaltungsaufwendungen". Lines 41 (Kz 151) and 42 must be sent **together** (600522). The report has no such split, so `build_xml` refuses Kz 151. | 42 | rule 600522; ERiC-44.3-run | verified (2026-11-20); code: EUR-7 |
+| Kz 112 needs Kz 140 | Taxable income (Kz 112, `E6000401`) ≠ 0 without the collected-VAT line (Kz 140, `E6000601`) is an error (600240). `build_xml` refuses it until EUR-2 adds the VAT lines. | 15, 17 | rule 600240; ERiC-44.3-run | verified (2026-11-20) |
+| Schuldzinsen limit `2050.00` | For sole proprietors, Kz 234 (`E6004303`) above 2 050,00 € requires Anlage SZ (600068) and Entnahmen ≥ Kz 106 + 108 (600902). `build_xml` refuses it (`SCHULDZINSEN_LIMIT`). | 56 | rules 600068, 600902 | verified (2026-11-20) |
+| Kz 132 (GWG) without AVEÜR | Kz 132 alone (no AfA lines, no `AVEUER`) passes ERiC 44.3 validation; no EÜR or AVEÜR rule ties it to Anlage AVEÜR. `build_xml` still refuses Kz 132 until EUR-3 is decided. | 36 | ERiC-44.3-run (2026-11-20); "AVEUER - Regeln" | verified (2026-11-20) |
+| Copyright text | `Vorsatz/Copyright` is the software maker's notice; FreiBuch sends `(c) FreiBuch contributors, AGPL-3.0`. | — | "Vorsatz - Felder" | verified (2026-11-20) |
+| `NutzdatenTicket` | 1–32 characters, unique per delivery; with one Nutzdatenblock the schema suggests "1". FreiBuch sends `1`. `TransferTicket` is left out (optional). | — | `ElsterBasisSchema/Schema/headerbasis_datentypen.xsd`, `th000011_extern.xsd` | verified (2026-11-20) |
+| server acceptance | One `submit(mode="test")` with the owner's Hersteller-ID and certificate (`scripts/eur_test_submission.py --send`). | — | — | TODO → EUR-6 (owner, MANUAL-STEPS M2) |
