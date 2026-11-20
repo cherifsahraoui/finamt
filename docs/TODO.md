@@ -55,6 +55,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 29 | EUR-7 | EÜR XML: Kz 151 needs the Zeile 42 split (Kz 153) | S | ready | owner input on the split |
 | 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | done (2026-11-20) | — |
 | 31 | UI-8 | UI: the old UI's remaining features (manual entry, projects, partners, XML) | M | ready | — |
+| 32 | CLN-5 | Remove old UI, rename project to FreiBuch (fork of finamt) | L | waiting | UI-6 (retire old SPA) |
 
 ---
 
@@ -491,3 +492,44 @@ Shared rules for all UI cards:
   a malformed Steuernummer shows the field error; the PIN is not in the HTML; the saved profile is
   readable by `GET /taxpayer` (old UI).
 - **Done when**: tests pass; the page is linked in the navigation; tax-rules row added.
+
+---
+
+## Clean-up: Project rename and final UI transition
+
+### CLN-5: Remove old UI, rename to FreiBuch (fork of finamt)
+
+- **Status**: waiting (UI-6) · **Size**: L
+- **Goal**: finalize the FreiBuch fork by removing the old React SPA, retiring the unused legacy code,
+  and renaming the project from finamt to freibuch throughout the codebase, with mention of finamt
+  for license attribution only.
+- **Context**: FreiBuch is a fork of finamt (AGPL-3.0, see LICENSE). The old SPA bundle under
+  `/` and `src/finamt/ui/static/` is no longer needed after the new server-rendered UI replaces it.
+- **Files** (scope):
+  - **Remove**: `src/finamt/ui/static/` (old React bundle, Vite build outputs); `frontend/` directory
+    if present (old npm project); any legacy code in `legacy/` that is not referenced.
+  - **Rename package**: `finamt` → `freibuch` throughout; keep all functional imports and APIs.
+    Update `pyproject.toml` (name, scripts, entry point). Check CLI references (`finamt` command
+    becomes `freibuch` or stays as an alias if backward-compatibility is desired).
+  - **Update references**: `README.md`, docs, comments: replace "finamt" with "FreiBuch" except in:
+    - License and attribution sections (keep "finamt" and the AGPL license reference).
+    - Historical notes in `NOTICE.md` (record that finamt became FreiBuch).
+    - Any mention of the upstream (note it as a fork of finamt).
+  - **Config and resources**: `docs/BASELINE.md`, `AGENTS.md`, `docs/tax-rules.md` (references to file
+    paths or package names), database config (`src/finamt/storage/project.py` paths like
+    `~/.freibuch/` instead of `~/.finamt/`), any environment variable docs (`FREIBUCH_*` instead of
+    `FINAMT_*`, with a deprecation warning for old `FINAMT_*` vars).
+- **Steps**:
+  1. Delete `src/finamt/ui/static/` and `frontend/` (if it exists).
+  2. Rename the package: `src/finamt/` → `src/freibuch/`; update all imports and `pyproject.toml`.
+  3. Update all public docs, README, and inline comments to use "FreiBuch".
+  4. Update `NOTICE.md` to record the fork and package name change.
+  5. Update paths in storage and config to `~/.freibuch/`; add a deprecation warning for old `~/.finamt/`
+     so users' existing DBs continue to work.
+  6. Run all tests (they should still pass after import updates).
+  7. Verify the CLI works (`freibuch --help`).
+- **Tests**: all existing tests should pass with the new package name; storage migration test covers
+  backward-compat for old `~/.finamt/` paths.
+- **Done when**: all tests pass; `freibuch --help` works; no reference to "finamt" except in LICENSE,
+  NOTICE.md (historical record), and attribution comments; `git log` shows the final commit; the
+  project is fully branded as FreiBuch.
