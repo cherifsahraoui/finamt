@@ -1,4 +1,4 @@
-# finamt fork — baseline map
+# FreiBuch (finamt fork) — baseline map
 
 Snapshot of the code as of the `baseline/fable-1` branch (package version 0.26.0).
 Scope of this fork: **UStVA, annual USt and EÜR for a single Freiberufler**.
@@ -19,7 +19,7 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `tax/ustva.py` | `generate_ustva()` → `USTVAReport` (per-rate input/output VAT). |
 | `tax/eur.py` | `generate_eur()` → `EURReport`: EÜR lines per Anlage EÜR 2025 Kennzahl (`KZ_LABELS`, `_PURCHASE_KZ`, `_PURCHASE_SUB_KZ`); ambiguous receipts in `review_lines`, excluded from the profit. |
 | `tax/elster.py` | ELSTER XML for UStVA and annual USt (E50), Kz mapping `_ustva_kennzahlen`, signer, HTTP client, ERiC client. |
-| `tax/eric_wrapper.py` | ctypes bridge to the ERiC shared library (`EricSession`, `EricBuffer`, `EricCertificate`). |
+| `tax/eric_wrapper.py` | ctypes bridge to the ERiC shared library (`EricSession`, `EricBuffer`, `EricCertificate`). Targets the ERiC 44 API (no transfer handle). |
 | `tax/eur_elster.py` | EÜR ELSTER boundary: `build_xml` (stub), `validate`, `submit` (dry_run/test only). |
 | `tax/safety.py` | Live-submission gate (`FINAMT_ALLOW_LIVE_SUBMISSION`). |
 | `ui/api.py` | FastAPI backend for the web UI. |
@@ -27,7 +27,9 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2; covers receipts + UStVA/USt, no EÜR. A new UI goes to `ui/web/` (tasks UI-1 … UI-6). |
 | `utils.py`, `progress.py`, `exceptions.py` | Parsing helpers, SSE progress events, exception types. |
 
-Outside the package: `legacy/` holds the removed KSt / E-Bilanz / Jahresabschluss code
+Outside the package: `scripts/ustva_test_submission.py` runs a fixed UStVA test case through ERiC
+(validate, or `--send` with Testmerker to the test Finanzamt; owner step M2). `private/`
+(git-ignored) holds the owner's ERiC, its documentation and the certificate. `legacy/` holds the removed KSt / E-Bilanz / Jahresabschluss code
 (not packaged, not tested, not linted). `examples/`, `notebooks/`, `docs/` (Sphinx).
 
 ## Entry points

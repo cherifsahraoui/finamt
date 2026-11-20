@@ -1,183 +1,108 @@
 # Manual steps for the owner
 
-Some steps can't be done by an AI agent: they need your ELSTER developer login, your
-certificate, or a decision only you can make. This runbook covers each one, in order. Every
-step says what it unblocks in [TODO.md](TODO.md) and what to hand back to the agent.
+This file lists only what an agent **cannot** do for you: things that need your ELSTER login, your
+certificate PIN, a decision, or a legally binding filing. Everything else is done or is a task in
+[TODO.md](TODO.md).
 
-Never commit anything from these steps. ERiC, certificates, `.env`, databases and generated XML
-are git-ignored; keep them outside the repository anyway.
+Never commit anything from these steps. `private/`, `.env`, certificates, ERiC, databases and
+generated XML are git-ignored.
 
-| # | Step | When | Unblocks | Time |
+| # | Step | When | Unblocks | Your time |
 |---|---|---|---|---|
-| M1 | [Set up ELSTER developer access, Hersteller-ID and ERiC](#m1-elster-developer-setup) | once | everything ELSTER | 30 min (+ waiting for the Hersteller-ID) |
-| M2 | [Configure finamt (`.env`) and check that ERiC loads](#m2-configure-finamt) | once | M3 | 15 min |
-| M3 | [First UStVA validation and test submission](#m3-first-ustva-test-submission) | once, then yearly | UST-5 | 30 min |
-| M4 | [Collect the EÜR schema facts from ERiC](#m4-collect-the-eür-schema-facts-from-eric) | once per tax year | EUR-4 | 30–60 min |
-| M5 | [Decide how assets above 800 € are depreciated](#m5-decide-asset-depreciation) | once | EUR-3 | 10 min |
-| M6 | [File for real (live)](#m6-file-for-real) | every period | — | 10 min per filing |
-| M7 | [Yearly form check](#m7-yearly-form-check) | each autumn/winter | YEAR-1 | agent does it; 5 min for you |
-| M8 | [Optional: ask upstream for the web UI source](#m8-optional-ask-upstream-for-the-ui-source) | optional | UI decision | 5 min |
+| M1 | [Put your Hersteller-ID and certificate PIN into `.env`](#m1-hersteller-id-and-certificate-pin) | when available (**pending**, see below) | M2; ERiC validation of real data; all sending. Not needed for coding or tests | 5 min (+ waiting for the Hersteller-ID) |
+| M2 | [First test submission](#m2-first-test-submission) | once | UST-5 | 5 min |
+| M3 | [Decide how assets above 800 € are depreciated](#m3-decide-asset-depreciation) | once | EUR-3 | 10 min |
+| M4 | [File for real (live)](#m4-file-for-real) | every period | — | 10 min per filing |
+| M5 | [Yearly update: new ERiC and forms](#m5-yearly-update) | yearly | YEAR-1 | 10 min |
+| M6 | [Optional: ask upstream for the web UI source](#m6-optional-ask-upstream-for-the-ui-source) | optional | UI decision | 5 min |
+
+## Pending requests
+
+| Request | Requested | Status | Blocks | What the agent does meanwhile |
+|---|---|---|---|---|
+| Hersteller-ID for FreiBuch (M1) | 2026-11-20 | **pending**, owner to apply in the developer area and report back | M2 (UST-5 server test), EUR-4 ERiC validation, all sending | Works on EUR-4, EUR-3 and other offline tasks. ERiC validation tests skip with a reason until the ID is in `.env` |
+
+When the owner has the ID: put it in `.env` (M1), then tell the agent "M1 done". The agent then
+runs the ERiC validation tests and updates this table.
+
+## Already done by an agent (2026-11-20)
+
+- ERiC **44.3.6.0, Windows x86-64** extracted to `private/ERiC-44.3.6.0/Windows-x86_64/`. The 64-bit
+  build matches the 64-bit Python in `.venv`. The documentation is in `private/ERiC-44.3.6.0/Dokumentation/`.
+- `.venv` installed (`uv sync --extra dev`); all tests pass.
+- `.env` created with all paths and the official ERiC **test tax number**. ERiC loads (`ERiC OK`)
+  and your certificate file opens. Only two placeholders are left for you (M1).
+- FreiBuch's UStVA (2025, 2026) and annual USt (2024, 2025) XML **validate** in ERiC 44.3.
+  Nothing was sent.
+- The EÜR schema facts (old step "collect the EÜR facts") are recorded in
+  [tax-rules.md](tax-rules.md#anlage-eür-2025-xml-datenartversion-euer_2025-for-eur-4); EUR-4 is ready.
+- ERiC 44 changed its API; FreiBuch was adapted (task ERIC-1).
+
+### What is in `private/`
+
+| file or folder | content | keep? |
+|---|---|---|
+| `<your-cert>.pfx` | your ELSTER certificate (*Mein ELSTER* login file) | **yes**; `.env` points to it |
+| `ERiC-44.3.6.0/Windows-x86_64/` | ERiC library (`dll/ericapi.dll` + `dll/plugins/`), extracted from the `.jar` | **yes** |
+| `ERiC-44.3.6.0/Dokumentation/` | developer handbook, release notes, per form: XSD schema, Jahresdokumentation (`.ods`: fields, Kennzahlen, rules), example XML; `Datenartversionmatrix.ods`, `Finanzamtsdaten.ods` (incl. test Finanzämter) | **yes**, agents read it |
+| `ERiC-44.3.6.0/Windows-x86_64/Beispiel/ericdemo-python/test-softidnr-pse.pfx` | official ELSTER **test certificate**, PIN `123456` (public, from the ERiC docs), valid until 2028-07-10 | yes; fallback for M2 |
+| `Vordrucke/2026/` (from `Vordrucke_2026_ERiC-44.3.6.0.zip`) | official 2026 form PDFs: `USt1A_2026.pdf`, `USt1H_2026.pdf` (UStVA), USt 2 A delta (annual USt); also forms out of scope (KapESt, LSt, § 50a) | yes, for YEAR-1 |
+| `Vordrucke/VZ_unabhaengig/` (from `Vordrucke_VZ_unabhaengig_…zip`) | KSt, Grundsteuer, FsE, InvSt, USt-Vergütung forms | out of scope; can delete |
+| `GrundsteuerBY_Musterbescheide.zip` | Bavarian property tax sample notices | out of scope; can delete |
+| `*.jar`, `*.zip` | the original downloads | extracted already; can delete to save ~650 MB |
+| `eric_logs/` | ERiC log files of the checks | can delete any time |
+
+### Two facts that changed the plan
+
+- **Your own Hersteller-ID is required for real ERiC validation and for any sending, including
+  tests.** The demo ID `74931` from older docs is blocked: ERiC refuses it already during validation
+  (`610301202`). Coding and the offline test suite don't need it, so you can add it later.
+  Do not use a made-up ID to send anything.
+- **Use the test tax number for every test.** Only Bayern has them; they work for UStVA, USt and
+  EÜR. `.env` uses `9198011310010` (198/113/10010, test Finanzamt 9198). ELSTER deletes everything
+  sent to a test Finanzamt, even a case without Testmerker, so a mistake can't become a filing.
+
+If `uv` is not found in your terminal, use `py -m uv` instead of `uv` in the commands below.
 
 ---
 
-## M1: ELSTER developer setup
+## M1: Hersteller-ID and certificate PIN
 
-ELSTER's own steps for developers (elster.de → Benutzergruppen → Entwickler) are: register as a
-Hersteller/Entwickler, get developer-area access from the Bayerisches Landesamt für Steuern,
-download ERiC in the developer area, and **apply for a Hersteller-ID** under "Anträge und
-Formulare". You already have the developer account. Check the rest:
-
-1. **Log in** to the developer area: https://www.elster.de/elsterweb/entwickler/login
-2. **Hersteller-ID**: if you don't have one yet, apply for it in the developer area under
-   *Anträge und Formulare*. Note the number; it goes into `FINAMT_ELSTER_HERSTELLER_ID`. Do not
-   use the ID that was in the upstream `.env.example`; it belongs to another manufacturer.
-3. **Download ERiC** for the machine you file from (Linux x86-64, macOS or Windows). Unpack it
-   **outside** the repository, for example:
-   ```bash
-   mkdir -p ~/elster && cd ~/elster && unzip ~/Downloads/ERiC-*.zip
-   ```
-   Find the folder that contains `libericapi.so` (Linux), `libericapi.dylib` (macOS) or
-   `ericapi.dll` (Windows), plus a `plugins` folder:
-   ```bash
-   find ~/elster -name 'libericapi.*' -o -name 'ericapi.dll'
-   ```
-   That folder is your **ERiC lib path**. Upstream used `ERiC-43.4.6.0/Darwin-universal/lib`.
-4. While you are in the developer area, also download the **ERiC documentation /
-   Jahresdokumentation** for the current tax year. M4 needs it.
-5. **Your ELSTER certificate**: the `.pfx` file from your *Mein ELSTER* account (the
-   "Zertifikatsdatei" you log in with) and its PIN. Copy it to a private place:
-   ```bash
-   mkdir -p ~/.finamt/default && cp ~/path/to/your-cert.pfx ~/.finamt/default/elster_cert.pfx
-   chmod 600 ~/.finamt/default/elster_cert.pfx
-   ```
-   If the developer area offers **test certificates** and test tax numbers, prefer them for M3.
-
-**Hand back**: nothing; just tell the agent "M1 done".
-
-## M2: Configure finamt
-
-1. In the repository root:
-   ```bash
-   cp .env.example .env
-   chmod 600 .env
-   ```
-2. Fill in `.env` (no quotes needed):
+1. **Hersteller-ID** (5 digits): log in to the developer area
+   (https://www.elster.de/elsterweb/entwickler/login). If you don't have one yet, apply under
+   *Anträge und Formulare*. It is per product, so apply for "FreiBuch". Wait for the number.
+2. Open `.env` in the repository root and replace the two placeholders:
    ```ini
-   ERIC_LIBRARY_PATH=/home/<you>/elster/ERiC-<version>/<platform>/lib
-   FINAMT_ERIC_HOME=/home/<you>/elster/ERiC-<version>/<platform>/lib   # same folder; web UI reads this until CFG-1
-   FINAMT_ELSTER_CERT_PATH=~/.finamt/default/elster_cert.pfx
-   FINAMT_ELSTER_CERT_PASSWORD=<your certificate PIN>
-   FINAMT_ELSTER_STEUERNUMMER=<your 13-digit ELSTER tax number, digits only>
-   FINAMT_ELSTER_FINANZAMT_NR=<4-digit Finanzamt number = first 4 digits of the 13-digit number>
-   FINAMT_ELSTER_BUNDESLAND_KZ=<2-digit Bundesland code>
-   FINAMT_ELSTER_HERSTELLER_ID=<your Hersteller-ID>
-   FINAMT_ALLOW_LIVE_SUBMISSION=0
+   FINAMT_ELSTER_CERT_PASSWORD=<YOUR-CERTIFICATE-PIN>
+   FINAMT_ELSTER_HERSTELLER_ID=<YOUR-HERSTELLER-ID>
    ```
-   The 13-digit ELSTER tax number is the "bundeseinheitliche Steuernummer"; your Finanzamt letter
-   shows the regional format, and ELSTER shows the 13-digit form.
-   Prefer `.env` over typing the PIN into the web UI: the UI stores the PIN in the project database.
-3. **Check that ERiC loads** (no network, nothing is sent):
-   ```bash
-   set -a; . ./.env; set +a
-   uv run python -c "
-   import os
-   from finamt.tax.eric_wrapper import EricSession
-   with EricSession(os.environ['ERIC_LIBRARY_PATH']):
-       print('ERiC OK')
-   "
-   ```
-   `ERiC OK` means the library and plugins were found. An `OSError` means the path is wrong, or
-   the ERiC build doesn't match your OS or CPU.
+   No quotes. Leave the other lines alone. If you ever edit a path, use forward slashes
+   (`C:/Users/...`): with backslashes, `uv run --env-file` silently loads nothing.
+3. Check in *Mein ELSTER* when your certificate expires, and renew it in time.
 
-**Hand back**: "M2 done, ERiC OK" (or the error text). Never paste the PIN or the certificate.
+**Hand back**: "M1 done". Never paste the PIN.
 
-## M3: First UStVA test submission
+## M2: First test submission
 
-Goal: prove the UStVA path works with your ERiC and certificate, and answer the open rounding
-question (UST-5). Use a **past** quarter. With the Testmerker, the submission is a test and not a
-filing.
+Proves that the ELSTER server accepts FreiBuch's UStVA (task UST-5). It sends a fixed test case:
+Q1 2025, one sale of 1 000.99 € net at 19 %, with the Testmerker, to the test Finanzamt. It is not
+a filing. The script refuses to run with a real tax number.
 
-Start the server with your `.env` loaded:
-```bash
-set -a; . ./.env; set +a
-uv run finamt serve
+From the repository root in PowerShell:
+```powershell
+uv run --env-file .env python scripts/ustva_test_submission.py          # 1. validate, nothing sent
+uv run --env-file .env python scripts/ustva_test_submission.py --send   # 2. test submission
 ```
+Step 1 should print `success=True`. Step 2 should print `success=True` and a `telenummer`.
 
-**Option A, web UI**: open http://127.0.0.1:8000 and:
-1. In the taxpayer profile, set Rechtsform to **Freiberuflich** and enter your name and address.
-2. In **ELSTER-DATEN**, check the ERiC path and Hersteller-ID. The certificate comes from `.env`.
-3. Add one manual sale receipt in the quarter with a net amount **with cents**, for example 1 000.99 €
-   at 19 %.
-4. Open the UStVA for that quarter. Keep **"Testmodus (nicht rechtswirksam)" ticked**, then validate
-   and send.
+If step 2 fails with a certificate error, try the ERiC test certificate once: in `.env` set
+`FINAMT_ELSTER_CERT_PATH` to `…/private/ERiC-44.3.6.0/Windows-x86_64/Beispiel/ericdemo-python/test-softidnr-pse.pfx`
+and `FINAMT_ELSTER_CERT_PASSWORD=123456`, run step 2 again, then switch both lines back.
 
-**Option B, terminal** (reproducible; a second terminal while the server runs):
-```bash
-DB=$HOME/.finamt/default/finamt.db
-API=http://127.0.0.1:8000
+**Hand back** (UST-5): the printed lines (`success`, `telenummer`, error text). Remove nothing;
+they contain only the test tax number.
 
-# 1. a test receipt with cents in the base
-curl -s -X POST "$API/receipts?db=$DB" -H 'Content-Type: application/json' \
-  -d '{"date":"2025-02-10","vendor":"Testkunde","receipt_type":"sale","category":"services","net_amount":1000.99,"vat_percentage":19}'
-
-# 2. look at the XML finamt would send (nothing is sent)
-curl -s -X POST "$API/tax/ustva/xml?db=$DB" -H 'Content-Type: application/json' \
-  -d '{"year":2025,"quarter":1,"use_test":true}' > /tmp/ustva-q1-test.xml
-grep -o '<Kz[0-9]*>[^<]*</Kz[0-9]*>\|<Testmerker>[^<]*</Testmerker>' /tmp/ustva-q1-test.xml
-
-# 3. ERiC validation only (uses the certificate, sends nothing)
-curl -s -X POST "$API/tax/ustva/submit?db=$DB" -H 'Content-Type: application/json' \
-  -d '{"year":2025,"quarter":1,"use_test":true,"validate_only":true}'
-
-# 4. test submission (Testmerker set, not a filing)
-curl -s -X POST "$API/tax/ustva/submit?db=$DB" -H 'Content-Type: application/json' \
-  -d '{"year":2025,"quarter":1,"use_test":true}'
-```
-Step 2 should show `Kz81` = `1000` (cents cut off), `Kz83` = `190.19`, and `Testmerker` = `700000004`.
-
-Afterwards, delete the test receipt (web UI, or `DELETE /receipts/{id}`).
-
-**Hand back** to the agent (UST-5):
-- whether validation and the test submission succeeded, and the `telenummer` if there was one;
-- the full error or hint text from ERiC if anything failed (remove your tax number from it first);
-- whether ERiC complained about the base `1000` for a net of 1 000.99.
-
-The agent then records the result in `docs/tax-rules.md` (rows "truncation", `_USTVA_KZ_ORDER`) and
-updates decision D5.
-
-## M4: Collect the EÜR schema facts from ERiC
-
-EUR-4 (sending the EÜR via ELSTER) is blocked only by facts that are in the ERiC documentation
-behind your login. These facts (names and strings, not whole files) are needed for
-interoperability. Do **not** copy whole XSD or documentation files into the repository.
-
-1. Search your unpacked ERiC and its documentation:
-   ```bash
-   cd ~/elster
-   find . -iname '*eur*' | grep -iv 'euro' | head -50          # EÜR schema, examples, docs
-   grep -rhoE '\b(EUER|UStVA|USt)_20[0-9]{2}\b' . 2>/dev/null | sort -u   # datenartVersion strings
-   ```
-   The second command also prints `UStVA_<year>` and `USt_<year>`: finamt already uses those
-   strings, which confirms you are looking in the right place.
-2. Write the answers into a private file **outside** the repo, e.g. `~/elster/eur-facts-2025.md`:
-   - **datenartVersion** for the Anlage EÜR 2025 (the string passed to ERiC);
-   - **Verfahren** and **DatenArt** for the TransferHeader (for UStVA they are
-     `ElsterAnmeldung` / `UStVA`);
-   - the **root element and namespace** of the EÜR payload (Nutzdaten);
-   - for each Kennzahl in `docs/tax-rules.md` → "Anlage EÜR 2025 Kennzahlen": the **XML element
-     name** and its format (cents? sign?);
-   - whether **Anlage AVEÜR** must be sent with it (the BMF letter says it is a necessary part when
-     you have fixed assets);
-   - the path of an **example XML** for the EÜR in the ERiC package, if there is one.
-3. Hand it to the agent in one of two ways:
-   - **Paste** the facts file into the chat; or
-   - run Claude Code **locally** on your machine, where `~/elster` exists, and tell it:
-     "ERiC docs are in ~/elster, read them for EUR-4, don't copy files into the repo".
-
-The agent records the values in `docs/tax-rules.md` (status `verified`, source "ERiC <version>
-Jahresdokumentation") and starts EUR-4. Repeat this step every tax year: new ERiC, new strings.
-
-## M5: Decide asset depreciation
+## M3: Decide asset depreciation
 
 Equipment above 800 € net currently goes to "ZU PRÜFEN" and is not counted. Tell the agent which
 option to build (EUR-3):
@@ -189,10 +114,10 @@ option to build (EUR-3):
 - **C. One-year write-off for computer hardware and software**, per BMF guidance (the agent must
   verify the current BMF letter before building it).
 
-Say for example "M5: use C for computers, A for everything else". The agent verifies the sources
-and builds it.
+Say for example "M3: use C for computers, A for everything else". The agent verifies the sources
+and builds it. With any AfA, the EÜR must also send Anlage AVEÜR (ERiC enforces it).
 
-## M6: File for real
+## M4: File for real
 
 Do this for each UStVA, the annual USt, and later the EÜR.
 
@@ -200,33 +125,42 @@ Do this for each UStVA, the annual USt, and later the EÜR.
    Dauerfristverlängerung (§ 46 UStDV).
 2. Make sure all receipts for the period are in and reviewed in the web UI. For the EÜR, the
    "ZU PRÜFEN" list must be empty or deliberately decided.
-3. Compare the Kennzahlen with your own check (step 2 of M3 shows them).
-4. Run a **validation** and a **test submission** first (M3, steps 3–4).
-5. Turn on live filing **only for this one server run**:
-   ```bash
-   set -a; . ./.env; set +a
-   FINAMT_ALLOW_LIVE_SUBMISSION=1 uv run finamt serve
+3. In `.env`, replace the three test tax number lines with **your** values (see the comment block
+   there): 13-digit ELSTER tax number, its first 4 digits, your 2-digit Bundesland code. Your
+   Finanzamt letter shows the regional format; *Mein ELSTER* shows the 13-digit one.
+4. Validate first: `uv run finamt serve`, open http://127.0.0.1:8000, open the period and click
+   validate with **"Testmodus (nicht rechtswirksam)" ticked**. Compare the Kennzahlen with your
+   own check.
+5. Turn on live filing **only for this one server run** (PowerShell):
+   ```powershell
+   $env:FINAMT_ALLOW_LIVE_SUBMISSION = "1"; uv run finamt serve
    ```
-   In the UI, **untick** "Testmodus" and send. Or with curl, `"use_test": false`.
+   In the UI, **untick** "Testmodus" and send.
 6. Save the `telenummer` / ELSTER receipt (the UI records live submissions under *Submissions*).
-7. **Stop the server.** Live filing is off again, because `.env` keeps `FINAMT_ALLOW_LIVE_SUBMISSION=0`.
+7. **Close that PowerShell window.** Live filing is off again, because `.env` keeps
+   `FINAMT_ALLOW_LIVE_SUBMISSION=0`. Put the test tax number lines back into `.env` if you want to
+   run tests later.
 
-Corrections: send again with `"is_berichtigung": true` (UStVA).
+Corrections: send again as a Berichtigung (`"is_berichtigung": true`, UStVA Kz 10).
 
-## M7: Yearly form check
+## M5: Yearly update
 
-The BMF publishes new forms each year (Anlage EÜR around August–September, UStVA around
-December). Tell an agent "do YEAR-1 for <year>". It downloads the BMF letters, compares every
-Kennzahl and updates the mapping. Your part: review its summary of what changed, and do M4 again
-with the new ERiC.
+ELSTER publishes a new ERiC each year, and the BMF publishes new forms (Anlage EÜR around
+August–September, UStVA around December).
 
-## M8: Optional: ask upstream for the UI source
+1. In the developer area, download into `private/`: the **Windows x86-64** ERiC `.jar` (not
+   `Windows-x86`, which is 32-bit), the **Dokumentation** `.zip`, and the **Vordrucke_<year>** `.zip`.
+2. Tell an agent: "do YEAR-1 for <year>, new ERiC is in private/". It extracts them, updates the
+   `.env` paths, checks every Kennzahl and XML fact, and re-runs the ERiC validation.
+3. Review its summary of what changed.
+
+## M6: Optional: ask upstream for the UI source
 
 The web UI ships only as a compiled bundle. The upstream authors own the copyright, so they don't
 have to publish the source, but you can ask. Send a short message to the contact address in the
 upstream README, for example:
 
-> Hello, I use finamt (AGPL-3.0) for my own freelance bookkeeping and maintain a fork limited to
+> Hello, I use finamt (AGPL-3.0) for my own freelance bookkeeping and maintain a fork (FreiBuch) limited to
 > UStVA/USt/EÜR. The repository contains only the built web UI (`src/finamt/ui/static/`). Could
 > you share the frontend source (React/Vite project), under AGPL-3.0 like the rest of finamt?
 > Thank you!

@@ -1,4 +1,4 @@
-# AGENTS.md — working on the finamt fork
+# AGENTS.md — working on FreiBuch (fork of finamt)
 
 Read this first. Then:
 
@@ -8,7 +8,7 @@ Read this first. Then:
 - `docs/tax-rules.md`: every tax value with its official source and status.
 - `docs/BASELINE.md`: code map, entry points, receipt flow.
 - `docs/MANUAL-STEPS.md`: steps only the owner can do (ELSTER login, certificate, decisions).
-  When a card is blocked on the owner, point them to the matching step (M1–M8).
+  When a card is blocked on the owner, point them to the matching step (M1–M6).
 
 **Scope**: a free, local tool for one German Freiberufler: UStVA (monthly/quarterly), annual
 USt and EÜR, with receipts as input. **Out of scope**: KSt, GewSt, E-Bilanz, Jahresabschluss,

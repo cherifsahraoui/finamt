@@ -24,8 +24,13 @@ status with the date. If code and source disagree, set `code differs` and add a 
 | USt-2026 | BMF-Schreiben 29.12.2025: Muster der Umsatzsteuererklärung 2026 | https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Umsatzsteuer/2025-12-29-muster-USt-erklaerung-2026.pdf?__blob=publicationFile&v=5 |
 
 **Not publicly available** (needs the ELSTER developer login and the ERiC download): XML element
-names, XSD, `datenartVersion` strings, Testmerker, and namespace. Rows that depend on them stay `TODO`
-until someone checks them against the ERiC Jahresdokumentation.
+names, XSD, `datenartVersion` strings, Testmerker, and namespace. They come from this source, read
+on 2026-11-20 (kept in the git-ignored `private/` folder, never committed):
+
+| id | document | where (inside `private/ERiC-44.3.6.0/Dokumentation/`) |
+|---|---|---|
+| ERiC-44.3 | ERiC 44.3.6.0 developer documentation (ELSTER developer area) | `Datenartversionmatrix.ods`; `ERiC-Entwicklerhandbuch.pdf` (Kap. 6.5 test support); `ERiC-Releasenotes.pdf`; `Datenarten/ElsterAnmeldung/UStVA/` (Jahresdokumentation, Schema, Beispiele); `Datenarten/ElsterErklaerung/EUER/` (same) |
+| ERiC-44.3-run | Offline `EricBearbeiteVorgang` validation (flag `ERIC_VALIDIERE`, nothing sent) of FreiBuch-built XML with ERiC 44.3.6.0 Windows-x86_64 | run on 2026-11-20, see rows below |
 
 ## VAT rates (§ 12 UStG)
 
@@ -55,14 +60,14 @@ until someone checks them against the ERiC Jahresdokumentation.
 | new business | Monthly in the year of starting and the following year (S. 4). For 2021–2026, S. 4 is replaced by a projection: the actual tax is converted to an annual figure, or the expected tax of the starting year is used. | § 18 Abs. 2 S. 4 and S. 6 UStG | 2021–2026 | verified (2026-11-18) |
 | 10th day | Voranmeldung due by the 10th day after the period ends, electronically. | § 18 Abs. 1 S. 1 UStG | current | verified (2026-11-18) |
 | +1 month | Dauerfristverlängerung on application. Monthly filers pay a Sondervorauszahlung (§ 47 UStDV, not read). UStVA Kz 39 deducts it. | § 46 UStDV; § 48 Abs. 1 UStDV; USt1A-2026 Zeile 49 | current | verified (2026-11-18); § 47 TODO |
-| `Zeitraum` codes `01`–`12`, `41`–`44`, annual `0` | ELSTER period codes used in `build_ustva`. | ERiC UStVA schema (developer login) | — | TODO |
+| `Zeitraum` codes `01`–`12`, `41`–`44` | UStVA period codes: `01`–`12` monthly, `41`–`44` quarters I–IV (enumeration of field `Zeitraum`). There is no annual code in the UStVA: FreiBuch's `period=0` builds the separate annual USt return (E50, datenartVersion `USt_<year>`), whose `Zeitraum` is the year. | ERiC-44.3 `Jahresdokumentation_UStVA_2026.ods`, sheet "Felder"; ERiC-44.3-run (2025, 2026 UStVA and 2024, 2025 USt validated) | 2025–2026 | verified (2026-11-20) |
 
 ## UStVA Kennzahlen 2026 (USt1A-2026, used by `elster._ustva_kennzahlen`)
 
 | value | rule | legal source | year | status |
 |---|---|---|---|---|
 | whole euros / cents | "Tragen Sie bei den Bemessungsgrundlagen bitte nur Beträge in vollen Euro ein; bei den Umsatzsteuer- und Vorsteuerbeträgen ist dagegen stets auch die Eintragung von Centbeträgen erforderlich." Negative amounts carry a minus sign. | USt1A-2026 Anleitung, general notes | 2026 | verified (2026-11-18) |
-| truncation | Code cuts off cents (`ROUND_DOWN`). The guide says "ohne Centbeträge" but does not say whether to round or truncate. | ERiC plausibility rules (developer login) | 2026 | TODO → UST-5 |
+| truncation | Code cuts off cents (`ROUND_DOWN`). The guide says "ohne Centbeträge" but does not say whether to round or truncate. Field format of Kz 81/86/35/21/46: `GeldBetragOhneCent`, sign allowed (Formatkennzeichen N); tax fields (Kz 36/47/62/66/67/83): `GeldBetragMitCent` with a decimal **point**. ERiC 44.3 has no plausibility rule that compares base and tax: a UStVA with net 1 000.99 € at 19 % sent as Kz 81 = `1000`, Kz 83 = `171.19` (with Kz 66 = `19.00`) validates without errors or hints. | USt1A-2026 Anleitung; ERiC-44.3 `Jahresdokumentation_UStVA_2026.ods` ("Felder", "Regeln"); ERiC-44.3-run | 2026 | ERiC-accepted (2026-11-20); the legal choice between rounding and truncation is still unsourced (D5); server-side check pending → UST-5 |
 | Kz 81 | Taxable supplies at 19 %, base without VAT. | USt1A-2026 Zeile 13 | 2026 | verified (2026-11-18) |
 | Kz 86 | Taxable supplies at 7 %, base. | USt1A-2026 Zeile 14 | 2026 | verified (2026-11-18) |
 | Kz 87 | Taxable supplies at 0 %, base. Not produced by code. | USt1A-2026 Zeile 15 | 2026 | code differs → UST-3 |
@@ -81,8 +86,9 @@ until someone checks them against the ERiC Jahresdokumentation.
 | Kz 50 / Kz 37 | Extra memo lines only when a consideration became uncollectible (§ 17 Abs. 2 Nr. 1 UStG). Ordinary changes such as credit notes and discounts (§ 17 Abs. 1) are entered **in the base and tax lines themselves**, as negative amounts, in the period the change happens. Code skips receipts with negative VAT. | USt1A-2026 section I, Anleitung Zeilen 51–52 | 2026 | code differs → UST-2 |
 | Kz 39 | Deduction of the fixed Sondervorauszahlung (usually only in the last Voranmeldung of the year). | USt1A-2026 Zeile 49 | 2026 | verified (2026-11-18) |
 | Kz 83 | Remaining advance payment / surplus ("Bitte in jedem Fall ausfüllen"). Code omits Kz 83 for an empty period; the form says always fill it in. | USt1A-2026 Zeile 50 | 2026 | code differs → UST-2 |
-| `_USTVA_KZ_ORDER` | XML element order required by the UStVA XSD. | ERiC UStVA schema (developer login) | 2025 | TODO |
-| E50 elements `E3003303`… | XML element names for the annual USt return. | ERiC USt schema (developer login); USt-2026 for the paper lines | 2023–2026 | TODO |
+| `_USTVA_KZ_ORDER` | XML element order required by the UStVA XSD (`Umsatzsteuervoranmeldung` sequence). The code order equals the 2025 XSD exactly. The 2026 XSD drops `Kz23` and appends `Kz500` after `Kz98`; the code emits neither, so 2026 output is still in order. | ERiC-44.3 `Schema/2025/UStVA-2025.xsd`, `Schema/2026/UStVA-2026.xsd`; ERiC-44.3-run | 2025–2026 | verified (2026-11-20); update the tuple when YEAR-1 adds a field |
+| Kz 09 | Five-digit Hersteller-ID of the software (mandatory, pattern `[0-9]{5}`), not a Finanzamt number. | ERiC-44.3 `Jahresdokumentation_UStVA_2026.ods` (rule `UStVA_Kz09_Pflichtfeld`) | 2026 | verified (2026-11-20) |
+| E50 elements `E3003303`… | XML element names for the annual USt return. The current XML validates in ERiC 44.3 for 2024 and 2025; the individual element meanings are not yet checked row by row. | ERiC USt schema (developer login); USt-2026 for the paper lines; ERiC-44.3-run | 2023–2026 | TODO (ERiC-valid, meanings unchecked) |
 
 ## Invoices (§ 14 UStG, § 33 UStDV)
 
@@ -158,6 +164,82 @@ Labels shortened. Where the line number is given, it is the 2025 form line.
 
 | value | rule | legal source | year | status |
 |---|---|---|---|---|
-| Testmerker `700000004` | Marks a test submission; `eur_elster` refuses test mode without it. | ERiC developer documentation (login) | — | TODO |
-| Namespace `http://www.elster.de/elsterxml/schema/v11` | Envelope namespace. | ERiC developer documentation | — | TODO |
-| EÜR `datenartVersion` | Not public. `eur_elster.submit(mode="test")` requires it as an argument. | ERiC Jahresdokumentation (login) | 2025 | TODO → EUR-4 |
+| Testmerker `700000004` | Marks a test submission (defined in `ericdef.h`); ELSTER deletes test cases instead of processing them. Not allowed in a real filing. `eur_elster` refuses test mode without it. Used in the official UStVA 2026 and EÜR 2025 examples. | ERiC-44.3 `ERiC-Entwicklerhandbuch.pdf` Kap. 6.5.5; `Beispiele/UStVA_2026.xml`, `EUER_2025_ok.xml` | — | verified (2026-11-20) |
+| Namespace `http://www.elster.de/elsterxml/schema/v11` | Envelope namespace (`<Elster>`, `TransferHeader version="11"`). | ERiC-44.3 examples, handbook Abb. 6-7 | — | verified (2026-11-20) |
+| UStVA payload | Verfahren `ElsterAnmeldung`, DatenArt `UStVA`, datenartVersion `UStVA_<year>` (from 2016), root `Anmeldungssteuern version="<year>"` in namespace `http://finkonsens.de/elster/elsteranmeldung/ustva/v<year>`. | ERiC-44.3 `Datenartversionmatrix.ods`; `Beispiele/UStVA_2026.xml` | 2016– | verified (2026-11-20) |
+| Hersteller-ID | Every software maker needs its own Hersteller-ID, for real **and** test cases. The demo ID `74931` is blocked: ERiC returns `610301202 ERIC_IO_TESTHERSTELLERID_GESPERRT` even for validation only. | ERiC-44.3 handbook Kap. 6.5.3; ERiC-44.3-run | — | verified (2026-11-20) |
+| Test tax numbers | Only Bayern has test tax numbers. They are valid for USt annual returns, EÜR and Anmeldungssteuern (UStVA), e.g. `198/113/10010` = ELSTER `9198011310010` (Finanzamt `9198`, Bundesland `09`). Anything sent to a test Finanzamt is deleted, even a real case. | ERiC-44.3 handbook Kap. 6.5.1, 6.5.4; `Finanzamtsdaten.ods` | — | verified (2026-11-20) |
+| ERiC 44 API | `EricBearbeiteVorgang` takes 7 arguments; the transfer handle was removed. ERiC 44 libraries are not compatible with ERiC 43. | ERiC-44.3 `ERiC-Releasenotes.pdf` 5.2.6, 5.2.8; `include/ericapi.h` | ERiC 44+ | verified (2026-11-20); `eric_wrapper.py` adapted |
+| EÜR `datenartVersion` | `EUER_<year>` (from 2015; new Nutzdaten structure from 2021), e.g. `EUER_2025`. Verfahren `ElsterErklaerung`, DatenArt `EUER`. | ERiC-44.3 `Datenartversionmatrix.ods`; `Beispiele/EUER_2025_ok.xml` | 2025 | verified (2026-11-20) |
+
+## Anlage EÜR 2025 XML (datenartVersion `EUER_2025`, for EUR-4)
+
+Facts for the EÜR ELSTER builder (EUR-4). Names and formats only; the XSD and documentation stay in
+`private/`. Source: ERiC-44.3 `Datenarten/ElsterErklaerung/EUER/Jahresdokumentation/Jahresdokumentation_E77_2025.ods`
+(sheets "Allg. Information", "EUER - Felder", "EUER - Kennzahlen", "EUER - Regeln"),
+`Schema/2025/E77-2025.xsd`, `Beispiele/EUER_2025_ok.xml`. All rows verified (2026-11-20); the official
+example validates offline in ERiC 44.3 (ERiC-44.3-run).
+
+| value | rule |
+|---|---|
+| payload root | `<E77 xmlns="http://finkonsens.de/elster/elstererklaerung/euer/e77/v2025" version="2025">` inside `Nutzdaten`. Children: `EUER` (the form; mandatory), optional `AVEUER`, `SZ`, `SE`, `AVSE`, `ER`, `LuF`, then `Vorsatz` (mandatory). |
+| `Vorsatz` | `Unterfallart` = `77`, `Vorgang` = `01`, `StNr` (13 digits), `Zeitraum` (year), `AbsName`, `AbsStr`, `AbsPlz`, `AbsOrt`, `Copyright`, `OrdNrArt` = `S`, optional `Rueckuebermittlung/Bescheid`. See the example for the order. |
+| `NutzdatenHeader` | `Empfaenger id="F"` = the 4-digit Finanzamt number (first 4 digits of `StNr`). |
+| decimal separator | **comma** (`10,00`), unlike the UStVA (decimal point). |
+| format `P` | amount with 2 decimals, sign allowed, 0 allowed. |
+| format `%` | amount with 2 decimals, no sign, 0 allowed. |
+| `EUER/Allg` | `E6000016` name, `E6000023` street, `E6000024` PLZ, `E6000025` Ort, `E6000026` StNr, `E6000017` Art des Betriebs, `E6000602` Rechtsform, `E6000603` Einkunftsart, `E6000604`, `E6000019` (see example and "EUER - Felder" for the code lists). |
+| Anlage AVEÜR | Not always required, but ERiC raises **errors** (e.g. rules 606840, 606846, 606847, 607901, 607902) when AfA lines Kz 130/131/136 are filled without the matching AVEÜR totals, or the values differ. When EUR-3 produces AfA, EUR-4 must also send `AVEUER`. |
+
+| Kz | element path under `EUER/` | format | form line |
+|---|---|---|---|
+| 111 | `BEin/Kleinunternehmer/Sum/E6000101` | P | 12 |
+| 112 | `BEin/USt_StPflicht/Sum/E6000401` | P | 15 |
+| 103 | `BEin/USt_StFrei/Sum/E6000501` | P | 16 |
+| 140 | `BEin/USt_Vereinnahmt_Unentgeltl/Sum/E6000601` | P | 17 |
+| 141 | `BEin/USt_Erstattet_Verrechnet/Sum/E6000701` | % | 18 |
+| 102 | `BEin/Anlagevermoegen/Sum/E6000801` | P | 19 |
+| 106 | `BEin/Nutzung_Priv_Kfz/Sum/E6000901` | % | 20 |
+| 108 | `BEin/Entnahme_Sonst/Sum/E6001001` | % | 21 |
+| 159 | `BEin/GesamtSum/E6001201` | P | 23 |
+| 100 | `BAus/Ware_Rohstoff_Hilfsstoff/Sum/E6001601` | P | 27 |
+| 110 | `BAus/Fremdleistung/Sum/E6001701` | P | 29 |
+| 136 | `BAus/AfA/E6001901` | % | 31 |
+| 131 | `BAus/AfA/E6002001` | % | 32 |
+| 130 | `BAus/AfA/E6002101` | P | 33 |
+| 132 | `BAus/AfA/Wirtschaftsgut_geringwertig/Sum/E6002301` | % | 36 |
+| 137 | `BAus/AfA/Weitere_Angabe/E6003302` | % | 37 |
+| 150 | `BAus/Raumkosten_u_sonst/Miete_Pacht/Sum/E6003201` | P | 39 |
+| 151 | `BAus/Raumkosten_u_sonst/Sonst_Aufw_betr_Grund/Sum/E6003301` | P | 41 |
+| 280 | `BAus/Sonst_unbeschraenkt/Kommunikation/Sum/E6003901` | P | 43 |
+| 221 | `BAus/Sonst_unbeschraenkt/Auswertstaetigkeit/Sum/E6004004` | P | 44 |
+| 281 | `BAus/Sonst_unbeschraenkt/Fortbildung/Sum/E6004003` | P | 45 |
+| 194 | `BAus/Sonst_unbeschraenkt/Rechtsberatung_StB_Buchf/Sum/E6004801` | P | 46 |
+| 222 | `BAus/Sonst_unbeschraenkt/Miete_Leasing_bewegl_WG/Sum/E6004304` | P | 47 |
+| 223 | `BAus/Sonst_unbeschraenkt/Beitrag_Gebuehr_Abgabe_Versicherung/Sum/E6004402` | P | 49 |
+| 228 | `BAus/Sonst_unbeschraenkt/EDV/Sum/E6004405` | P | 50 |
+| 229 | `BAus/Sonst_unbeschraenkt/Arbeitsmittel/Sum/E6004408` | P | 51 |
+| 227 | `BAus/Sonst_unbeschraenkt/Verpackung_Transport/Sum/E6004414` | P | 53 |
+| 224 | `BAus/Sonst_unbeschraenkt/Werbung/Sum/E6004501` | P | 54 |
+| 232 | `BAus/Sonst_unbeschraenkt/Schuldzins_AnlageVerm/Sum/E6004202` | P | 55 |
+| 234 | `BAus/Sonst_unbeschraenkt/Schuldzins_Uebrige/Sum/E6004303` | P | 56 |
+| 185 | `BAus/Sonst_unbeschraenkt/Vorsteuer/Sum/E6005001` | P | 57 |
+| 186 | `BAus/Sonst_unbeschraenkt/USt/Sum/E6005101` | % | 58 |
+| 183 | `BAus/Sonst_unbeschraenkt/Sonst_unbeschr_abziehbar/Sum/E6004901` | P | 60 |
+| 164 | `BAus/Beschr_abziehbar/Nicht_abziehbar/Geschenke/Sum/E6004001` | % | 62 |
+| 174 | `BAus/Beschr_abziehbar/Abziehbar/Geschenke/Sum/E6004002` | P | 62 |
+| 165 | `BAus/Beschr_abziehbar/Nicht_abziehbar/Bewirtung/Sum/E6004101` | % | 63 |
+| 175 | `BAus/Beschr_abziehbar/Abziehbar/Bewirtung/Sum/E6004102` | P | 63 |
+| 171 | `BAus/Beschr_abziehbar/Abziehbar/Verpflegung/Sum/E6005002` | % | 64 |
+| 144 | `BAus/KFZ_u_Fahrtkosten/Leasing/Sum/E6005801` | P | 68 |
+| 145 | `BAus/KFZ_u_Fahrtkosten/Steuer_Versicherung_Maut/Sum/E6005903` | P | 69 |
+| 146 | `BAus/KFZ_u_Fahrtkosten/Sonst/Sum/E6006003` | P | 70 |
+| 147 | `BAus/KFZ_u_Fahrtkosten/Fahrtkosten_Nutzungseinlage/Sum/E6006103` | % | 71 |
+| 176 | `BAus/KFZ_u_Fahrtkosten/Entfernungspausch_Familienheimfahrt/Sum/E6003702` | % | 73 |
+| 199 | `BAus/Summe_BAus/E6005301` | P | 75 |
+
+Each `…/Sum` context also has `…/Einz` siblings (up to 99 single entries) in the XSD; the example
+sends only `Sum`. Element **order** inside each context follows `E77-2025.xsd`: EUR-4 must take it
+from there (or emit in example order) and prove it with an ERiC validation test.
+The profit lines (`Ermittlung_Gewinn/Uebertrag/E6005501`, `E6005601` in the example) are not yet in this
+register: EUR-4 must add them with their form lines before use.

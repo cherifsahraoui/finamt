@@ -1,6 +1,6 @@
 # NOTICE
 
-This repository is a fork of **finamt** by Space Octahedron GmbH / Yauheniya Varabyova.
+This repository (**FreiBuch**) is a fork of **finamt** by Space Octahedron GmbH / Yauheniya Varabyova.
 
 - Upstream: https://github.com/spaceoctahedron/finamt
 - Forked from upstream version: 0.26.0
@@ -14,6 +14,10 @@ annual Umsatzsteuererklärung (USt) and Einnahmen-Überschuss-Rechnung (EÜR), w
 as input. KSt, GewSt, E-Bilanz, Jahresabschluss and Einkommensteuer are out of scope.
 
 ## Changes relative to upstream
+
+- Project renamed to **FreiBuch** (repository name, README and docs prose). The Python package
+  `finamt`, the `finamt` CLI command, the `~/.finamt/` data folder and the `FINAMT_*` environment
+  variables are unchanged.
 
 Branch `baseline/fable-1`:
 
@@ -51,6 +55,14 @@ Branch `baseline/fable-1`:
 - `.gitignore`: added ERiC, certificate, database, ELSTER payload and model patterns.
 - `.env.example`: placeholders in place of the upstream example Steuernummer / Hersteller-ID;
   documented `ERIC_LIBRARY_PATH` and `FINAMT_ALLOW_LIVE_SUBMISSION`.
+
+### ERiC 44 (task ERIC-1, 2026-11-20)
+- `src/finamt/tax/eric_wrapper.py`: `EricBearbeiteVorgang` is called with 7 arguments. ERiC 44
+  removed the transfer-handle parameter (ERiC Releasenotes 5.2.6); upstream's 8-argument call,
+  written for ERiC 43, fails with `610001526` on ERiC 44. `bearbeite_vorgang` still returns
+  `(rc, None)`. ERiC 43 is no longer supported.
+- `scripts/ustva_test_submission.py` (new): validates, or sends as a test case, a fixed UStVA with
+  ERiC. It always sets the Testmerker and refuses any tax number outside the test Finanzamt 9198.
 
 ### EÜR ELSTER boundary
 - `src/finamt/tax/eur_elster.py` (new): `build_xml` (raises `NotImplementedError` until the

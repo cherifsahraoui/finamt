@@ -13,7 +13,7 @@ self-contained card: goal, verified rules, files, steps, tests and a done-when c
 4. When done, set the card status to `done (YYYY-MM-DD)`, move the next card to `ready` if its
    dependencies are met, and update the board.
 5. If a card is `blocked` on the owner, don't work around it: point the owner to the matching step
-   in [MANUAL-STEPS.md](MANUAL-STEPS.md) (M1–M8) and pick the next `ready` card.
+   in [MANUAL-STEPS.md](MANUAL-STEPS.md) (M1–M6) and pick the next `ready` card.
 
 Status values: `ready` (can start now), `waiting` (depends on another task), `blocked`
 (needs the owner), `done`.
@@ -32,22 +32,24 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 7 | UST-4 | Reverse charge: flag + Kz 21 / 46 / 47 / 67 / 60 | L | waiting | UST-2 |
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | ready | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | waiting | UST-4 |
-| 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M5](MANUAL-STEPS.md#m5-decide-asset-depreciation) |
+| 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
-| 13 | EUR-4 | EÜR ELSTER XML builder | L | blocked | owner: [M4](MANUAL-STEPS.md#m4-collect-the-eür-schema-facts-from-eric) |
-| 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | owner: [M1–M3](MANUAL-STEPS.md#m3-first-ustva-test-submission) |
+| 13 | EUR-4 | EÜR ELSTER XML builder | L | ready | — (schema facts in tax-rules.md since 2026-11-20) |
+| 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | ERiC validation done; test send needs owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | ready | — |
 | 16 | CLN-2 | Small fixes: `finamt.__all__`, `tests/pytest.ini` | S | ready | — |
 | 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 |
 | 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
-| 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M7](MANUAL-STEPS.md#m7-yearly-form-check)) |
+| 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M5](MANUAL-STEPS.md#m5-yearly-update)) |
 | 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | waiting | EUR-2, CLI-1 |
 | 21 | UI-2 | UI: receipt upload, edit, review warnings | M | waiting | UI-1 |
 | 22 | UI-3 | UI: UStVA / USt preview, validate, test, live | M | waiting | UI-1, UST-2 |
 | 23 | UI-4 | UI: EÜR year view with "ZU PRÜFEN" list | S | waiting | UI-1, EUR-2 |
 | 24 | UI-5 | UI: invoices | M | waiting | UI-1, INV-1 |
 | 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | S | waiting | UI-2 … UI-4, owner OK |
+| 26 | ERIC-1 | ERiC 44 API: `EricBearbeiteVorgang` without transfer handle | S | done (2026-11-20) | — |
+| 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | ready | — |
 
 ---
 
@@ -128,13 +130,15 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### UST-5: check rounding and XML with ERiC (owner)
 
-- **Status**: blocked (needs the owner's ERiC library and certificate) · **Size**: S
-- **Owner steps**: [MANUAL-STEPS.md M1–M3](MANUAL-STEPS.md#m3-first-ustva-test-submission). The
-  owner hands back the ERiC result and messages.
-- **Goal**: run `ElsterEricClient.validate_ust` and one test submission for a UStVA with cents in
-  the bases. Confirm whether truncation is accepted and whether ERiC reports plausibility hints.
-- **Done when**: result recorded in tax-rules.md rows "truncation" and `_USTVA_KZ_ORDER`; decision
-  D5 updated if needed.
+- **Status**: blocked on the owner for the last step · **Size**: S
+- **Done on 2026-11-20**: `ElsterEricClient.validate_ust` with ERiC 44.3.6.0 (Windows x86-64) on a
+  UStVA with net 1 000.99 € at 19 %: valid for 2025 and 2026 (Kz 81 = `1000`, Kz 83 = `171.19`),
+  no hints. Annual USt (E50) valid for 2024 and 2025. Recorded in tax-rules.md ("truncation",
+  `_USTVA_KZ_ORDER`, `Zeitraum`).
+- **Open**: one **test submission** (Testmerker, test tax number) to see whether the ELSTER server
+  accepts it. Needs the owner's Hersteller-ID and certificate PIN:
+  [MANUAL-STEPS.md M1–M2](MANUAL-STEPS.md#m2-first-test-submission). The owner hands back the result.
+- **Done when**: server result recorded in tax-rules.md row "truncation"; decision D5 updated if needed.
 
 ---
 
@@ -172,7 +176,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 ### EUR-3: assets above 800 € (AfA / Sammelposten)
 
 - **Status**: blocked · **Size**: M
-- **Owner steps**: [MANUAL-STEPS.md M5](MANUAL-STEPS.md#m5-decide-asset-depreciation).
+- **Owner steps**: [MANUAL-STEPS.md M3](MANUAL-STEPS.md#m3-decide-asset-depreciation).
 - **Owner action**: confirm the depreciation approach (straight-line over the useful life from the
   official AfA tables, or the 1-year rule for computer hardware/software per BMF guidance). An agent
   may then fetch and verify the sources (§ 7 EStG, BMF AfA tables) and add rows to tax-rules.md.
@@ -183,10 +187,11 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-4: EÜR ELSTER XML builder
 
-- **Status**: blocked (D10: needs the ERiC EÜR XSD, element names and `datenartVersion`) · **Size**: L
-- **Owner steps**: [MANUAL-STEPS.md M4](MANUAL-STEPS.md#m4-collect-the-eür-schema-facts-from-eric).
-  The owner hands back a facts list (datenartVersion, Verfahren/DatenArt, root element, element
-  name per Kennzahl, AVEÜR requirement), or runs an agent locally next to the ERiC docs.
+- **Status**: ready · **Size**: L
+- **Facts**: tax-rules.md → "Anlage EÜR 2025 XML" (datenartVersion `EUER_2025`, namespace, root
+  `E77`, element per Kennzahl, decimal comma, AVEÜR rule). The XSD, example and ERiC itself are in
+  the git-ignored `private/ERiC-44.3.6.0/` on the owner's machine. Read them there, never copy them.
+  An ERiC validation test must `skip` when `ERIC_LIBRARY_PATH` is not set (tests run offline).
 - **Goal**: implement `finamt.tax.eur_elster.build_xml(report)` for the Anlage EÜR.
 - **Files**: `src/finamt/tax/eur_elster.py`, `tests/unit/test_eur_elster.py`, `docs/tax-rules.md`.
 - **Steps**: map `EURReport.kz_totals()` (plus the EUR-2 lines and Kz 159 / 199 totals) to the XSD
@@ -233,6 +238,15 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 - **Goal**: D4. The UStVA/USt submit routes read `ERIC_LIBRARY_PATH` first, then the legacy
   `FINAMT_ERIC_HOME` / project DB value with a deprecation warning.
 - **Files**: `src/finamt/ui/api.py` (only the two `eric_home = …` blocks), `.env.example`, tests.
+
+### ERIC-1: ERiC 44 API
+
+- **Status**: done (2026-11-20)
+- ERiC 44 removed the transfer-handle argument of `EricBearbeiteVorgang` (Releasenotes 5.2.6).
+  The wrapper passed 8 arguments, so with ERiC 44 every validation or submission failed with
+  `610001526` ("Parameter NULL"). `eric_wrapper.py` now passes 7; `bearbeite_vorgang` still
+  returns `(rc, None)` so callers are unchanged. ERiC 43 is no longer supported (its libraries are
+  not compatible with 44 anyway, Releasenotes 5.2.8). Test: `tests/unit/test_eric_wrapper.py`.
 
 ---
 
@@ -295,6 +309,18 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
   receipt without a single `vat_percentage` on rate `"unknown"`, which no Kennzahl uses.
 - **Steps**: in `generate_ustva`, when `vat_splits` is present, add each split to its rate line;
   when the rate is unknown and there are no splits, add a report warning.
+
+### CLN-4: no "—" placeholder in the UStVA sender address
+
+- **Status**: ready · **Size**: S
+- **Found**: 2026-11-20 with ERiC 44.3. `ElsterXMLBuilder.build_ustva` writes `"—"` into
+  `Anmeldungssteuern/DatenLieferant/Strasse` and `Ort` when the config has no address (always the
+  case with `ElsterConfig.from_env()`). ERiC rejects it: `610001002`, FehlerID
+  `ZeichenNichtImZeichensatz`.
+- **Goal**: raise a clear `ValueError` ("sender address missing") before calling ERiC, instead of a
+  placeholder; optionally read the address from `FINAMT_ELSTER_NAME/STREET/HOUSE_NUMBER/PLZ/CITY`.
+- **Files**: `src/finamt/tax/elster.py` (only the `DatenLieferant` block of `build_ustva`), tests;
+  then drop the workaround in `scripts/ustva_test_submission.py`.
 
 ### DOC-1: German README
 
