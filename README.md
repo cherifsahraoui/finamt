@@ -57,9 +57,24 @@ uv sync --extra dev          # or: python -m venv .venv && . .venv/bin/activate 
 uv run finamt --help
 ```
 
-On first use, OCR and LLM models are downloaded from HuggingFace (about 4 GB, cached in
-`~/.cache/huggingface/hub`). Tesseract is an optional OCR fallback:
+On first use, OCR and LLM model files are downloaded from HuggingFace and cached in
+`~/.cache/huggingface/hub`. Tesseract is an optional OCR fallback:
 `sudo apt-get install tesseract-ocr tesseract-ocr-deu` or `brew install tesseract tesseract-lang`.
+
+### Windows with an NVIDIA GTX 10-series GPU
+
+The standard Windows PyTorch wheel may be CPU-only. On Pascal GPUs such as the GTX 1070/1070 Ti,
+install the CUDA 12.6 PyTorch build and `bitsandbytes` after syncing the project:
+
+```powershell
+.\.venv\Scripts\python.exe -m ensurepip --upgrade
+.\.venv\Scripts\python.exe -m pip install --upgrade "torch==2.7.1" --index-url https://download.pytorch.org/whl/cu126
+.\.venv\Scripts\python.exe -m pip install "bitsandbytes>=0.43.0"
+.\.venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU fallback')"
+```
+
+The check should print `True` and the GPU name. Repeat both installs after a future `uv sync`,
+which can restore the CPU-only PyTorch build and remove `bitsandbytes`.
 
 ## A year with FreiBuch
 

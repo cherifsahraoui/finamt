@@ -226,3 +226,11 @@ Branch `baseline/fable-1`:
   roadmap, yearly workflow, category → EÜR Kennzahl table, safety and ELSTER setup. Upstream
   PyPI/badge/commercial-licensing sections removed; upstream credited under "License and credits".
   `readme/README_de.md` is unchanged (DOC-1).
+
+### Windows GPU model loading
+- `src/finamt/agents/llm_backend.py` (upstream file): report whether the Hugging Face model is
+  loading in 4-bit on CUDA or full precision on CPU; remove the misleading fixed download-size
+  estimate, and pass 4-bit quantization through `BitsAndBytesConfig` for current Transformers.
+- `src/finamt/agents/llm_caller.py` (upstream file): log the final model-load/inference exception
+  instead of silently turning it into an empty extraction result.
+- `README.md`: document CUDA 12.6 PyTorch and bitsandbytes setup for Windows Pascal GPUs.

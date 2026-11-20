@@ -9,12 +9,15 @@ Inference is delegated to llm_backend (mlx-lm on Apple Silicon, transformers els
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
 from ..utils import clean_json_response
 from . import llm_backend
 from .config import AgentModelConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _regex_fallback(raw: str, expected_keys: list[str]) -> dict:
@@ -69,6 +72,11 @@ def call_llm(
                 break
         except Exception:
             if attempt == cfg.max_retries:
+                logger.exception(
+                    "LLM request for %s failed after %s attempts",
+                    agent_name,
+                    cfg.max_retries,
+                )
                 raw = ""
 
     if debug_dir is not None:
