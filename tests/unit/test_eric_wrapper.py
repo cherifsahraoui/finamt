@@ -255,7 +255,10 @@ class TestEricSession:
                     flags=ERIC_VALIDIERE | ERIC_SENDE,
                 )
                 assert rc == 0
-                assert th is not None  # transfer handle returned
+                # ERiC 44 removed the transfer handle (Releasenotes 5.2.6): the C call
+                # takes 7 arguments and no handle is returned.
+                assert th is None
+                assert len(lib.EricBearbeiteVorgang.call_args.args) == 7
 
 
 # ---------------------------------------------------------------------------

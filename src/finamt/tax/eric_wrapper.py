@@ -149,10 +149,10 @@ def _load_library(home_dir: str) -> CDLL:
         # name,                            restype,                          argtypes
         ("EricInitialisiere",              c_int,    [S, S]),
         ("EricBeende",                     c_int,    None),
+        # ERiC >= 44: no transferHandle argument any more (Releasenotes 5.2.6, ERIC-36021)
         ("EricBearbeiteVorgang",           c_int,    [S, S, c_uint32,
                                                        POINTER(_eric_druck_parameter_t),
                                                        POINTER(_eric_verschluesselungs_parameter_t),
-                                                       POINTER(EricTransferHandle),
                                                        _EricRueckgabepufferHandle,
                                                        _EricRueckgabepufferHandle]),
         ("EricCheckXML",                   c_int,    [S, S, _EricRueckgabepufferHandle]),
@@ -274,11 +274,11 @@ class EricSession:
 
         Returns
         -------
-        (eric_return_code, transfer_handle_or_None)
+        (eric_return_code, None)
+            The second element is always None: ERiC 44 removed the transfer
+            handle (Releasenotes 5.2.6, ERIC-36021). The transfer ticket is in
+            the server response. The tuple shape is kept for existing callers.
         """
-        th = EricTransferHandle(0)
-        th_ref = byref(th) if (flags & ERIC_SENDE) else None
-
         cp_ref: POINTER | None = None
         if crypto_params is not None:
             cp_ref = byref(crypto_params)
@@ -289,11 +289,10 @@ class EricSession:
             c_uint32(flags),
             None,  # druck_parameter — not used for E-Bilanz
             cp_ref,
-            th_ref,
             response_buffer,
             server_buffer,
         )
-        return rc, th.value if th_ref is not None else None
+        return rc, None
 
     def get_error_text(self, code: int) -> str:
         h = self._buf_create()
