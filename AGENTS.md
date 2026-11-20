@@ -50,7 +50,9 @@ run the same commands without `uv run`.
    wholesale. Make the smallest change the task needs; describe structure changes in
    `docs/BASELINE.md`.
 8. **Small commits**, one concern each, with a message that says what and why. Do not commit to
-   `main` directly.
+   `main` directly. **One work branch, not one per task**: keep committing new tasks to the
+   current work branch. Start a new branch only when there is none (e.g. the last one was merged
+   into `main`), from up-to-date `main`, named after its start date: `work/YYYY-MM-DD`.
 
 ## Where to add things
 
