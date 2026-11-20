@@ -213,6 +213,10 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-6: EÜR test submission (owner)
 
+- **Note (2026-11-20)**: with two Steuernummern, send the EÜR test under the number chosen in
+  Stammdaten ("Anlage EÜR abgeben unter"); which one is right is still a `TODO` in tax-rules.md
+  (row "two Steuernummern"). `scripts/eur_test_submission.py` reads `FINAMT_ELSTER_STEUERNUMMER`.
+
 - **Status**: blocked on the owner · **Size**: S
 - **Owner steps**: [MANUAL-STEPS.md M1–M2](MANUAL-STEPS.md#m2-first-test-submission), steps 3–4
   (`scripts/eur_test_submission.py`, then `--send`). Needs the owner's Hersteller-ID and certificate.

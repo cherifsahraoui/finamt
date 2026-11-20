@@ -82,6 +82,12 @@ Branch `baseline/fable-1`:
   new templates and static files.
 - New `src/finamt/tax/bundesland.py`: the 16 Länder and the Steuernummer check for the new UI.
 
+### Two Steuernummern (2026-11-20)
+- New UI only: the taxpayer profile can hold a separate Einkommensteuer number (`tax_number_est`)
+  next to the Umsatzsteuer number (`tax_number`, unchanged, still used by the upstream UI), and the
+  owner's choice which one the Anlage EÜR is filed under (`euer_steuernummer`). UStVA and the annual
+  USt always use `tax_number`.
+
 ### ELSTER <Ziel> for 13-digit prefixes (2026-11-20)
 - `src/finamt/tax/elster.py` (`_BUNDESLAND_ZIEL`): the upstream UI sends the prefix of the 13-digit
   Steuernummer (e.g. `9` for Bayern) as `bundesland_kz`; upstream wrote it unchanged into
