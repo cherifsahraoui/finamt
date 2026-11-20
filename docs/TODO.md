@@ -43,17 +43,18 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 |
 | 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
 | 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M5](MANUAL-STEPS.md#m5-yearly-update)) |
-| 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | ready | — |
-| 21 | UI-2 | UI: receipt upload, edit, review warnings | M | waiting | UI-1 |
-| 22 | UI-3 | UI: UStVA / USt preview, validate, test, live | M | waiting | UI-1, UST-2 |
-| 23 | UI-4 | UI: EÜR year view with "ZU PRÜFEN" list | S | waiting | UI-1, EUR-2 |
-| 24 | UI-5 | UI: invoices | M | waiting | UI-1, INV-1 |
-| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | S | waiting | UI-2 … UI-4, UI-7, owner OK |
+| 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | done (2026-11-20) | — |
+| 21 | UI-2 | UI: receipt upload, edit, review warnings | M | done (2026-11-20) | — |
+| 22 | UI-3 | UI: UStVA / USt preview, validate, test, live | M | done (2026-11-20) | figures improve with UST-2 |
+| 23 | UI-4 | UI: EÜR year view with "ZU PRÜFEN" list | S | done (2026-11-20) | VAT lines come with EUR-2 |
+| 24 | UI-5 | UI: invoices | M | waiting | INV-1 |
+| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | M | waiting | UI-5, UI-8, owner OK |
 | 26 | ERIC-1 | ERiC 44 API: `EricBearbeiteVorgang` without transfer handle | S | done (2026-11-20) | — |
 | 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | ready | — |
 | 28 | EUR-6 | EÜR test submission with the owner's Hersteller-ID | S | blocked | owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 29 | EUR-7 | EÜR XML: Kz 151 needs the Zeile 42 split (Kz 153) | S | ready | owner input on the split |
-| 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | waiting | UI-1 |
+| 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | done (2026-11-20) | — |
+| 31 | UI-8 | UI: the old UI's remaining features (manual entry, projects, partners, XML) | M | ready | — |
 
 ---
 
@@ -369,8 +370,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 Shared rules for all UI cards:
 - Server-rendered pages: FastAPI routes under `/app` in a new package `src/finamt/ui/web/`
-  (`routes.py`, `templates/*.html`, `static/`). Jinja2 is already a dependency; add one vendored
-  htmx file and record its licence in `NOTICE.md`. **No Node/npm build.**
+  (`routes.py`, `helpers.py`, `templates/*.html`, `static/`). Jinja2 and the vendored htmx 2.0.4
+  (0BSD, see `NOTICE.md`) are in place. **No Node/npm build.**
 - Pages call the library directly (`generate_ustva`, `generate_eur`, the repository); don't call
   the HTTP API from Python.
 - German labels; amounts formatted with `Decimal`; no float maths in templates.
@@ -392,7 +393,7 @@ Shared rules for all UI cards:
 
 ### UI-1: skeleton and receipt list
 
-- **Status**: ready (D2 updated 2026-11-20) · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
 - **Goal**: `/app` shows a base layout (navigation: Belege, UStVA, EÜR, Rechnungen), a project
   selector (projects from `storage.project.list_projects`), and a read-only receipt list filtered by
   year, period, type and category, with the validation warnings.
@@ -405,37 +406,56 @@ Shared rules for all UI cards:
 
 ### UI-2: receipt upload, edit and review
 
-- **Status**: waiting (UI-1) · **Size**: M
+- **Status**: done (2026-11-20) · **Size**: M
 - **Goal**: upload PDFs (reuse the agent pipeline the existing upload route uses; mock it in tests),
   edit date, type, category, subcategory, amounts and VAT, delete; show which EÜR line a receipt lands on.
 
 ### UI-3: UStVA and annual USt
 
-- **Status**: waiting (UI-1, UST-2) · **Size**: M
+- **Status**: done (2026-11-20); the page shows what `generate_ustva` /
+  `_ustva_kennzahlen` produce, so UST-2 … UST-4 show up there without UI changes · **Size**: M
 - **Goal**: choose month or quarter; show the Kennzahlen preview from `_ustva_kennzahlen`; buttons
   for validate, test submission and (only when allowed) live, using `ElsterEricClient`; list past
   submissions from the project metadata.
 
 ### UI-4: EÜR year view
 
-- **Status**: waiting (UI-1, EUR-2) · **Size**: S
+- **Status**: done (2026-11-20); the VAT lines (Kz 140/141/185/186) appear once
+  EUR-2 adds them to `EURReport` · **Size**: S
 - **Goal**: Kennzahlen table for a year, the "ZU PRÜFEN" list with links to edit each receipt in
   UI-2, and a JSON download (`EURReport.to_json`).
 
 ### UI-5: invoices
 
-- **Status**: waiting (UI-1, INV-1) · **Size**: M
+- **Status**: waiting (INV-1); `/app/rechnungen` is a placeholder · **Size**: M
 - **Goal**: create, list and download invoices built by INV-1.
 
 ### UI-6: switch over
 
-- **Status**: waiting (UI-2 … UI-4, owner OK) · **Size**: S
+- **Status**: waiting (UI-5, UI-8, owner OK) · **Size**: M
+- **Note**: the old bundle loads its assets from `/assets/...`; keep that mount when it moves to
+  `/legacy-ui`.
 - **Goal**: serve the new UI at `/`, move the old bundle to `/legacy-ui` for one release, then delete
   it together with the `/tax/ebilanz/*` settings routes it needed. Record it in `NOTICE.md`.
 
+### UI-8: the old UI's remaining features
+
+- **Status**: ready · **Size**: M
+- **Goal**: what the old UI at `/` still does and `/app` doesn't, so UI-6 can retire it:
+  1. manual receipt entry without a file (`POST /receipts` logic: build a `ReceiptData`, `repo.save`);
+  2. create and delete projects (`validate_project_name`, `resolve_project(...).create_dirs()`);
+  3. partner list: rename, mark verified, merge (repository `list_all_counterparties`,
+     `set_counterparty_verified`, `relink_counterparty`);
+  4. download the UStVA / USt XML before sending (`ElsterXMLBuilder.build_ustva`, like `/tax/ustva/xml`);
+  5. the archive of submitted returns (`submitted_returns/`, `/submissions/document`).
+- **Files**: `src/finamt/ui/web/`, `tests/unit/test_web_ui.py`.
+- **Done when**: each item has a page or form with a TestClient test; the old UI is no longer needed.
+
 ### UI-7: Stammdaten and ELSTER settings
 
-- **Status**: waiting (UI-1) · **Size**: M
+- **Status**: done (2026-11-20). Street and house number stay one
+  field (`street`), as in the old UI. The Prüfziffer is left to ERiC (tax-rules row
+  "Prüfziffer") · **Size**: M
 - **Goal**: one page `/app/stammdaten` where the owner enters everything ELSTER needs, without
   free-text guessing. Today the old UI has a free-text Bundesland field; it shows
   "Bundesland erforderlich" until the text matches one of its patterns.

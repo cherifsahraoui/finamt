@@ -22,8 +22,8 @@ leave it, except for the ELSTER submission itself.
 | Store receipts, de-duplicate, categorise | ✅ works | local SQLite in `~/.finamt/<project>/` |
 | UStVA calculation (quarterly) | ✅ works | `finamt ustva --quarter Q --year Y` |
 | UStVA calculation (monthly) | ✅ in the web UI / API | CLI flag planned (CLI-1) |
-| UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ validates in ERiC 44.3; test mode; live needs an explicit switch ([M2](docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](docs/MANUAL-STEPS.md#m4-file-for-real)) | web UI (`finamt serve`) or API |
-| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works (VAT lines still missing, EUR-2) | Python API, see below |
+| UStVA / annual USt **submission** via ELSTER (ERiC) | ✅ validates in ERiC 44.3; test mode; live needs an explicit switch ([M2](docs/MANUAL-STEPS.md#m2-first-test-submission), [M4](docs/MANUAL-STEPS.md#m4-file-for-real)) | web UI `/app/ustva` (`finamt serve`) or API |
+| EÜR calculation with Anlage EÜR 2025 Kennzahlen | ✅ works (VAT lines still missing, EUR-2) | web UI `/app/euer`, Python API |
 | EÜR submission via ELSTER | 🧪 XML builder done and ERiC-valid (EUR-4), test mode only; needs the VAT lines (EUR-2) for real data and one owner test send (EUR-6) | Python: `finamt.tax.eur_elster` |
 | Credit notes, 0 % and reverse-charge sales in the UStVA | ⛔ not yet (UST-2 … UST-4) | — |
 | Writing invoices (§ 14 UStG) | ⛔ not yet (INV-1) | — |
@@ -155,16 +155,20 @@ ERiC itself goes into the git-ignored `private/` folder. Use the **Windows x86-6
 
 ## About the web UI
 
-`finamt serve` starts the web UI from upstream. It ships only as a **compiled bundle** whose source
-is not published, so this fork doesn't change it ([decision D2](docs/DECISIONS.md)).
+`finamt serve` starts two UIs on the same server ([decision D2](docs/DECISIONS.md)):
 
-- **Use it now** for uploading and reviewing receipts, and for UStVA and annual USt
-  (validate → test → live). It works with this fork. Set Rechtsform to *Freiberuflich* so the
-  corporate-only pages (KSt, GewSt, Jahresabschluss) stay hidden.
-- **It has no EÜR and no invoices.** Use the CLI and Python for those.
-- **A UI owned by this fork is being built** under `/app`: small, server-rendered, in the same
-  style as the bundle. It replaces the bundle once it covers the same ground: tasks UI-1 … UI-7
-  in [docs/TODO.md](docs/TODO.md).
+- **`http://127.0.0.1:8000/app`: FreiBuch's own UI.** Übersicht (next UStVA deadline, receipts to
+  review), Belege (upload, edit, delete, the EÜR line of each receipt), UStVA and annual USt
+  (Kennzahlen, ERiC check, test send; live only with `FINAMT_ALLOW_LIVE_SUBMISSION=1`), EÜR with the
+  "zu prüfen" list, and Stammdaten with a Bundesland dropdown that computes the 13-digit ELSTER
+  Steuernummer. Server-rendered, no build step (`src/finamt/ui/web/`).
+- **`http://127.0.0.1:8000/`: the upstream UI**, a compiled bundle whose source is not published, so
+  this fork doesn't change it. It still has a few things the new UI lacks (manual entry without a
+  file, project management, partner list, XML download). Both UIs read and write the same data.
+  Set Rechtsform to *Freiberuflich* there so the corporate-only pages stay hidden.
+
+Invoices come with INV-1. The old UI is retired once the new one covers the rest (UI-6 in
+[docs/TODO.md](docs/TODO.md)).
 
 ## For contributors and AI agents
 

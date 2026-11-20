@@ -70,6 +70,25 @@ Branch `baseline/fable-1`:
   `submit(xml, mode="dry_run"|"test")`. Test mode requires the Testmerker in the XML and reads
   the ERiC directory from `ERIC_LIBRARY_PATH` only. `mode="live"` raises `NotImplementedError`.
 
+### Own web UI under /app (tasks UI-1, UI-2, UI-3, UI-4, UI-7, 2026-11-20)
+- New package `src/finamt/ui/web/` (FastAPI + Jinja2 templates, no build step): overview, receipts
+  (list, upload through the upstream agent pipeline, edit, delete), UStVA / annual USt preview and
+  sending (reuses the upstream submit functions in-process), EÜR, Stammdaten.
+- `src/finamt/ui/api.py`: one call `register(app)` before the SPA catch-all. The upstream UI at `/`
+  and all upstream API routes are unchanged.
+- `src/finamt/ui/web/static/htmx.min.js`: htmx 2.0.4 by Big Sky Software, **Zero-Clause BSD**
+  licence (no conditions), from the npm package `htmx.org@2.0.4`.
+- `pyproject.toml`: `jinja2` declared (was only a transitive dependency). `MANIFEST.in` ships the
+  new templates and static files.
+- New `src/finamt/tax/bundesland.py`: the 16 Länder and the Steuernummer check for the new UI.
+
+### ELSTER <Ziel> for 13-digit prefixes (2026-11-20)
+- `src/finamt/tax/elster.py` (`_BUNDESLAND_ZIEL`): the upstream UI sends the prefix of the 13-digit
+  Steuernummer (e.g. `9` for Bayern) as `bundesland_kz`; upstream wrote it unchanged into
+  `<Ziel>`, which the ELSTER schema does not allow. The prefixes now map to the Länder codes.
+  `tests/unit/test_elster.py::TestBundeslandZiel::test_all_16_states_present` now counts distinct
+  Länder instead of dictionary entries. Comment on the Baden-Württemberg Steuernummer format fixed.
+
 ### UStVA import VAT (task UST-1, 2026-11-20)
 - `src/finamt/tax/elster.py` (`_ustva_kennzahlen`): upstream added Einfuhrumsatzsteuer into
   Kz 66. It now goes to its own line, Kz 62 (USt1A-2026 section F); Kz 66 holds only input tax

@@ -22,9 +22,11 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `tax/eric_wrapper.py` | ctypes bridge to the ERiC shared library (`EricSession`, `EricBuffer`, `EricCertificate`). Targets the ERiC 44 API (no transfer handle). |
 | `tax/eur_elster.py` | EÜR ELSTER boundary: `build_xml` (Anlage EÜR 2025 envelope, test builds only; field table `_BEIN_FIELDS` / `_BAUS_FIELDS` in XSD order, `EURTaxpayer` for the form header), `eric_validate` (ERiC, nothing sent), `validate` (offline), `submit` (dry_run/test only). |
 | `tax/safety.py` | Live-submission gate (`FINAMT_ALLOW_LIVE_SUBMISSION`). |
-| `ui/api.py` | FastAPI backend for the web UI. |
+| `tax/bundesland.py` | The 16 Länder in one place (name, ELSTER `<Ziel>` code, Länderschlüssel 01–16, Landesnummern) and `steuernummer_info()` (13-digit ELSTER number + Finanzamtsnr., or a German error). |
+| `ui/api.py` | FastAPI backend for the old web UI; calls `ui.web.register(app)` before the SPA catch-all. |
+| `ui/web/` | FreiBuch's own UI under `/app` (D2): `routes.py` (pages; sending calls `post_ustva_submit` / `post_uste_submit` in-process so the live gate stays in one place), `helpers.py` (projects via `?projekt=`, German formats, periods and UStVA deadlines, `eur_zeile()` per receipt), `templates/` (Jinja2), `static/` (`app.css`, vendored `htmx.min.js`). Stores data under the old UI's metadata keys (`taxpayer`, `elster_misc`, `elster_eric_home`, `submissions`) plus `freibuch_settings` (UStVA period, Dauerfristverlängerung). |
 | `ui/server.py` | Uvicorn launcher (`finamt serve`). |
-| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2 (never edited); covers receipts + UStVA/USt, no EÜR. Our own UI goes to `ui/web/` under `/app` (tasks UI-1 … UI-7). |
+| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2 (never edited); covers receipts + UStVA/USt, no EÜR. Still served at `/` until UI-6. |
 | `utils.py`, `progress.py`, `exceptions.py` | Parsing helpers, SSE progress events, exception types. |
 
 Outside the package: `scripts/ustva_test_submission.py` and `scripts/eur_test_submission.py` run a
