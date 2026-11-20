@@ -156,6 +156,11 @@ Branch `baseline/fable-1`:
 - `src/finamt/tax/eur.py`: such sales go to Kz 103.
 - Web UI: "USt-Behandlung" select on the receipt form; UStVA page lists the warnings.
 
+### One ERiC path setting (task CFG-1, 2026-11-20)
+- `src/finamt/ui/api.py` (upstream file): `POST /tax/ustva/submit` and `POST /tax/uste/submit`
+  read `ERIC_LIBRARY_PATH` first. Upstream's `FINAMT_ERIC_HOME` still works but warns
+  (`DeprecationWarning`); the 400 error names `ERIC_LIBRARY_PATH`.
+
 ### Zusammenfassende Meldung (task ZM-1, 2026-11-20)
 - New `src/finamt/tax/zm.py` (FreiBuch's own code), exported from `finamt.tax`: ZM sums per
   customer VAT ID and quarter. No submission yet.

@@ -34,8 +34,8 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | done (2026-11-20) | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | done (2026-11-20) | UST-4 (done) |
 | 10 | EUR-3 | Assets above 800 €: AfA / Sammelposten (Anlage AVEÜR) | M | blocked | owner: [M3](MANUAL-STEPS.md#m3-decide-asset-depreciation) |
-| 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | ready | EUR-2 (done) |
-| 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | ready | — |
+| 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | blocked | source for the 10-day window (tax-rules.md "cash basis") |
+| 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | done (2026-11-20) | — |
 | 13 | EUR-4 | EÜR ELSTER XML builder | L | done (2026-11-20) | — |
 | 14 | UST-5 | Check Kz rounding and XML with a real ERiC test submission | S | blocked | ERiC validation done; test send needs owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 15 | CLN-1 | Remove the remaining E-Bilanz code from `elster.py` | S | ready | — |
@@ -266,7 +266,11 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-5: 10-day rule for recurring payments
 
-- **Status**: ready · **Size**: S
+- **Status**: blocked (2026-11-20) · **Size**: S
+- **Blocked on**: a source for the window. § 11 Abs. 1 S. 2 EStG (read 2026-11-20) only says
+  "kurze Zeit"; the 10 days and the "due and paid" condition come from H 11 EStH / the EÜR guide,
+  which could not be read (esth.bundesfinanzministerium.de and bundesfinanzministerium.de returned
+  HTTP 503). Read one of them, update tax-rules.md row "cash basis", then set this card to ready.
 - **Goal**: regularly recurring income and expenses paid within 10 days around 1 January belong to the
   year they relate to (§ 11 Abs. 1 S. 2, Abs. 2 S. 2 EStG; EÜR guide). Typical case: the December
   UStVA payment made on 10 January.
@@ -374,7 +378,10 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### CFG-1: one ERiC path setting
 
-- **Status**: ready · **Size**: S
+- **Status**: done (2026-11-20) · **Size**: S
+- **Result**: `ui/api.py::_eric_home` (both routes): `ERIC_LIBRARY_PATH`, then
+  `FINAMT_ERIC_HOME` with a `DeprecationWarning`, then the path saved in Stammdaten. The saved
+  path is not deprecated: the new UI's Stammdaten page writes it. Tests: `tests/unit/test_eric_path.py`.
 - **Goal**: D4. The UStVA/USt submit routes read `ERIC_LIBRARY_PATH` first, then the legacy
   `FINAMT_ERIC_HOME` / project DB value with a deprecation warning.
 - **Files**: `src/finamt/ui/api.py` (only the two `eric_home = …` blocks), `.env.example`, tests.
