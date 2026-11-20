@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Upload{% endblock %}
+{% block content %}
+<h1>Upload</h1>
+<table class="list">
+  <thead><tr><th>Datei</th><th>Ergebnis</th></tr></thead>
+  <tbody>
+  {% for name, rid, fehler in ergebnisse %}
+    <tr>
+      <td>{{ name }}</td>
+      <td>
+        {% if rid and not fehler %}<span class="tag ok">gespeichert</span> <a href="{{ href('/belege/' ~ rid) }}">prüfen und bearbeiten</a>
+        {% elif rid %}<span class="tag warn">{{ fehler }}</span> <a href="{{ href('/belege/' ~ rid) }}">vorhandenen Beleg öffnen</a>
+        {% else %}<span class="tag err">{{ fehler }}</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p><a class="button" href="{{ href('/belege') }}">Zur Belegliste</a></p>
+{% endblock %}

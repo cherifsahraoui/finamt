@@ -2090,6 +2090,14 @@ def post_ebilanz_cert(body: dict = Body(...), db: str | None = Query(default=Non
 
 
 # ---------------------------------------------------------------------------
+# FreiBuch's own server-rendered UI under /app (D2). Must come before the SPA catch-all.
+# ---------------------------------------------------------------------------
+
+from finamt.ui.web import register as _register_web_ui  # noqa: E402
+
+_register_web_ui(app)
+
+# ---------------------------------------------------------------------------
 # Static SPA (must be last)
 # ---------------------------------------------------------------------------
 

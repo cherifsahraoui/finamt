@@ -1,0 +1,11 @@
+{% if info is none %}
+<p class="hint">Bundesland und Steuernummer eintragen; die ELSTER-Werte werden dann berechnet.</p>
+{% elif info.fehler %}
+<p class="field-error" role="alert">{{ info.fehler }}</p>
+{% else %}
+<table class="kv">
+  <tr><th>13-stellige ELSTER-Steuernummer</th><td class="num">{{ info.elster13 }}</td></tr>
+  <tr><th>Finanzamtsnr.</th><td class="num">{{ info.finanzamt_nr }}</td></tr>
+</table>
+<p class="hint">Die Prüfziffer kontrolliert ERiC beim Prüfen oder Senden.</p>
+{% endif %}

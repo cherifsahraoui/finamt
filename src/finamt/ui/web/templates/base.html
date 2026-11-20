@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FreiBuch{% endblock %} · FreiBuch</title>
+  <link rel="stylesheet" href="/app/static/app.css">
+  <script src="/app/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Hauptnavigation">
+      <a class="brand" href="{{ href('') }}">FreiBuch</a>
+      <form class="projekt" method="get" action="">
+        <label for="projekt">Projekt</label>
+        <select id="projekt" name="projekt" onchange="this.form.submit()">
+          {% for p in projekte %}<option value="{{ p }}" {% if p == projekt %}selected{% endif %}>{{ p }}</option>{% endfor %}
+        </select>
+        <noscript><button type="submit">Wechseln</button></noscript>
+      </form>
+      <ul>
+        {% for key, label, path in [
+          ("uebersicht", "Übersicht", ""),
+          ("belege", "Belege", "/belege"),
+          ("ustva", "UStVA", "/ustva"),
+          ("euer", "EÜR", "/euer"),
+          ("rechnungen", "Rechnungen", "/rechnungen"),
+          ("stammdaten", "Stammdaten", "/stammdaten"),
+        ] %}
+        <li><a href="{{ href(path) }}" {% if nav == key %}aria-current="page"{% endif %}>{{ label }}</a></li>
+        {% endfor %}
+      </ul>
+      <p class="hint">Alte Oberfläche: <a href="/">/</a></p>
+    </nav>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

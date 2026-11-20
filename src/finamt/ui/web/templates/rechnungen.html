@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Rechnungen{% endblock %}
+{% block content %}
+<h1>Rechnungen</h1>
+<section class="card">
+  <p>Ausgangsrechnungen mit fortlaufender Nummer (§ 14 UStG) kommen mit Aufgabe INV-1.</p>
+  <p class="hint">Bis dahin: Ausgangsrechnungen als Beleg der Art „Einnahme“ <a href="{{ href('/belege') }}">hochladen</a>.</p>
+</section>
+{% endblock %}

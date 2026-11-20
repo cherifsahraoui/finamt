@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Stammdaten{% endblock %}
+{% block content %}
+<h1>Stammdaten</h1>
+{% if gespeichert %}<div class="notice ok">Gespeichert.</div>{% endif %}
+
+<section class="card">
+  <h2>Steuerpflichtige Person</h2>
+  {% if land_unbekannt %}
+  <div class="notice warn">Gespeichertes Bundesland „{{ land_unbekannt }}“ ist nicht eindeutig. Bitte unten auswählen.</div>
+  {% endif %}
+  <form method="post" action="{{ href('/stammdaten/steuerpflichtiger') }}" class="grid">
+    <label class="wide">Name <input name="name" value="{{ tp.name or '' }}" autocomplete="name"></label>
+    <label class="wide">Straße und Hausnummer <input name="street" value="{{ tp.street or '' }}" autocomplete="street-address"></label>
+    <label class="wide">Adresszusatz <input name="address_supplement" value="{{ tp.address_supplement or '' }}"></label>
+    <label>PLZ <input name="postcode" value="{{ tp.postcode or '' }}" inputmode="numeric" class="short" autocomplete="postal-code"></label>
+    <label>Ort <input name="city" value="{{ tp.city or '' }}" autocomplete="address-level2"></label>
+    <label>Bundesland
+      <select name="state" required
+              hx-get="/app/stammdaten/steuernummer" hx-trigger="change" hx-target="#stnr" hx-include="[name=tax_number]">
+        <option value="">— bitte wählen —</option>
+        {% for b in laender %}<option value="{{ b.name }}" {% if land and land.name == b.name %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Steuernummer <input name="tax_number" value="{{ tp.tax_number or '' }}" class="mono" placeholder="wie auf dem Steuerbescheid, z. B. 198/113/10010"
+              hx-get="/app/stammdaten/steuernummer" hx-trigger="keyup changed delay:400ms, change" hx-target="#stnr" hx-include="[name=state]"></label>
+    <div class="wide" id="stnr" aria-live="polite">{% include "_steuernummer.html" %}</div>
+    <label>USt-IdNr. (optional) <input name="vat_id" value="{{ tp.vat_id or '' }}" class="mono" placeholder="DE123456789"></label>
+    <label>Rechtsform
+      <select name="rechtsform">
+        <option value="Freiberuflich" {% if (tp.rechtsform or "Freiberuflich") == "Freiberuflich" %}selected{% endif %}>Freiberuflich</option>
+        {% if tp.rechtsform and tp.rechtsform != "Freiberuflich" %}
+        <option value="{{ tp.rechtsform }}" selected>{{ tp.rechtsform }}</option>
+        {% endif %}
+      </select>
+    </label>
+    <div class="wide actions"><button type="submit">Speichern</button></div>
+  </form>
+</section>
+
+<section class="card" id="zeitraum">
+  <h2>Voranmeldungszeitraum</h2>
+  <form method="post" action="{{ href('/stammdaten/zeitraum') }}" class="stack">
+    <label class="check"><input type="radio" name="monatlich" value="" {% if not settings.monatlich %}checked{% endif %}> vierteljährlich</label>
+    <label class="check"><input type="radio" name="monatlich" value="1" {% if settings.monatlich %}checked{% endif %}> monatlich</label>
+    <label class="check"><input type="checkbox" name="dauerfrist" value="1" {% if settings.dauerfrist %}checked{% endif %}> Dauerfristverlängerung (Frist einen Monat später)</label>
+    <p class="hint">Welcher Zeitraum gilt, legt das Finanzamt fest (§ 18 Abs. 2 UStG).</p>
+    <div class="actions"><button type="submit">Speichern</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>ELSTER</h2>
+  <form method="post" action="{{ href('/stammdaten/elster') }}" enctype="multipart/form-data" class="grid">
+    <label>Hersteller-ID <input name="hersteller_id" value="{{ hersteller_id }}" class="mono short" inputmode="numeric" pattern="\d{5}" title="5 Ziffern"></label>
+    <label>Zertifikat (.pfx)
+      <input type="file" name="zertifikat" accept=".pfx,.p12">
+      <span class="hint">{% if cert_gespeichert %}gespeichert{% else %}noch keins{% endif %}</span>
+    </label>
+    <label>Zertifikats-PIN
+      <input type="password" name="cert_pin" value="" autocomplete="off" placeholder="{{ 'gespeichert' if pin_gespeichert else '' }}">
+      <span class="hint">Leer lassen, um die gespeicherte PIN zu behalten.</span>
+    </label>
+    <label class="wide">ERiC-Pfad (Ordner mit ericapi) <input name="eric_home" value="{{ eric_home }}" class="mono"
+      placeholder="sonst Umgebungsvariable FINAMT_ERIC_HOME"></label>
+    <div class="wide actions"><button type="submit">Speichern</button></div>
+  </form>
+  <p class="hint">Gespeichert im Projektordner, wie in der alten Oberfläche. Die PIN wird nie wieder angezeigt.</p>
+</section>
+{% endblock %}

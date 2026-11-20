@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Beleg{% endblock %}
+{% block content %}
+<p><a href="{{ href('/belege', jahr=(r.receipt_date.year if r.receipt_date else None)) }}">← Belege</a></p>
+<h1>{{ r.vendor or "Beleg" }} <span class="hint mono">{{ r.receipt_date|datum }}</span></h1>
+
+{% if gespeichert %}<div class="notice ok">Gespeichert.</div>{% endif %}
+{% if fehler %}<div class="notice err">{{ fehler }}</div>{% endif %}
+{% for w in r.validation_warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
+
+<div class="split">
+  <section class="card">
+    <h2>EÜR-Zeile</h2>
+    {% if zeile %}
+      {% if zeile.zu_pruefen %}
+      <p><span class="tag warn">ZU PRÜFEN</span> {{ zeile.reason }}</p>
+      <p class="hint">Dieser Beleg zählt nicht zum Gewinn, bis die Kategorie eindeutig ist.</p>
+      {% else %}
+      <p><span class="mono">Kz {{ zeile.kz }}</span> {{ zeile.label }}</p>
+      {% endif %}
+    {% else %}<p>— (kein Datum)</p>{% endif %}
+
+    <h2>Daten</h2>
+    <form method="post" action="{{ href('/belege/' ~ r.id) }}" class="grid">
+      <label>Art
+        <select name="receipt_type">
+          {% for k, v in typen.items() %}<option value="{{ k }}" {% if r.receipt_type|string == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Datum <input type="date" name="receipt_date" value="{{ r.receipt_date.strftime('%Y-%m-%d') if r.receipt_date else '' }}"></label>
+      <label class="wide">Partner <input name="counterparty_name" value="{{ r.vendor or '' }}">
+        <span class="hint">Ändert den Namen bei allen Belegen dieses Partners.</span></label>
+      <label>Rechnungsnummer <input name="receipt_number" value="{{ r.receipt_number or '' }}"></label>
+      <label>Kategorie
+        <select name="category">
+          {% for k in kategorien %}<option value="{{ k }}" {% if r.category|string == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Unterkategorie <input name="subcategory" value="{{ r.subcategory or '' }}"></label>
+      <label>Brutto (€) <input name="total_amount" class="num" inputmode="decimal" value="{{ r.total_amount|zahl }}"></label>
+      <label>USt-Satz (%) <input name="vat_percentage" class="num" inputmode="decimal" value="{{ r.vat_percentage|zahl }}"></label>
+      <label>USt (€) <input name="vat_amount" class="num" inputmode="decimal" value="{{ r.vat_amount|zahl }}"></label>
+      <label>Einfuhrumsatzsteuer (€) <input name="einfuhr_vat" class="num" inputmode="decimal" value="{{ r.einfuhr_vat|zahl }}"></label>
+      <label>Privatanteil (%) <input name="private_use_percent" class="num" inputmode="decimal" value="{{ (r.private_use_share * 100)|zahl if r.private_use_share else '' }}"></label>
+      <label class="wide">Notiz <input name="description" value="{{ r.description or '' }}"></label>
+      <div class="wide actions">
+        <button type="submit">Speichern</button>
+      </div>
+    </form>
+    <form method="post" action="{{ href('/belege/' ~ r.id ~ '/loeschen') }}" onsubmit="return confirm('Beleg wirklich löschen?')">
+      <button type="submit" class="danger">Beleg löschen</button>
+    </form>
+  </section>
+
+  <section class="card preview">
+    <h2>Original</h2>
+    <iframe src="{{ pdf_url }}" title="Beleg-Original"></iframe>
+    <p class="hint"><a href="{{ pdf_url }}" target="_blank" rel="noopener">In neuem Tab öffnen</a></p>
+  </section>
+</div>
+{% endblock %}

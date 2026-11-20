@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}EÜR {{ jahr }}{% endblock %}
+{% block content %}
+<h1>Einnahmenüberschussrechnung <span class="hint">{{ jahr }}</span></h1>
+
+<form method="get" action="{{ href('/euer') }}" class="filters">
+  <input type="hidden" name="projekt" value="{{ projekt }}">
+  <label>Jahr <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
+  <button type="submit">Anzeigen</button>
+  <a class="button secondary" href="{{ href('/euer/' ~ jahr ~ '.json') }}">JSON herunterladen</a>
+</form>
+
+{% for w in report.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
+
+<div class="split">
+  <section class="card">
+    <h2>Betriebseinnahmen</h2>
+    {% if report.einnahmen_lines %}
+    <table class="kv">
+      {% for ln in report.einnahmen_lines.values()|sort(attribute="kz") %}
+      <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
+      {% endfor %}
+      <tr class="total"><th>Summe</th><td class="num">{{ report.total_einnahmen_netto|eur }}</td></tr>
+    </table>
+    {% else %}<p class="empty">Keine Einnahmen.</p>{% endif %}
+
+    <h2>Betriebsausgaben</h2>
+    {% if report.ausgaben_lines %}
+    <table class="kv">
+      {% for ln in report.ausgaben_lines.values()|sort(attribute="kz") %}
+      <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
+      {% endfor %}
+      <tr class="total"><th>Summe</th><td class="num">{{ report.total_ausgaben_netto|eur }}</td></tr>
+    </table>
+    {% else %}<p class="empty">Keine Ausgaben.</p>{% endif %}
+
+    <table class="kv result">
+      <tr class="total"><th>Gewinn (ohne „zu prüfen“)</th><td class="num">{{ report.gewinn|eur }}</td></tr>
+    </table>
+    <p class="hint">Netto-Beträge; die Umsatzsteuer-Zeilen (Kz 140/141/185/186) folgen mit EUR-2.</p>
+  </section>
+
+  <section class="card {% if zu_pruefen %}accent{% endif %}">
+    <h2>ZU PRÜFEN</h2>
+    {% if zu_pruefen %}
+    <p>Diese Belege sind nicht im Gewinn, bis du entschieden hast ({{ report.total_review_netto|eur }} netto).</p>
+    <table class="list">
+      <thead><tr><th>Datum</th><th>Partner</th><th class="num">Netto</th><th>Grund</th></tr></thead>
+      <tbody>
+      {% for r, zeile in zu_pruefen %}
+        <tr>
+          <td class="mono"><a href="{{ href('/belege/' ~ r.id) }}">{{ r.receipt_date|datum }}</a></td>
+          <td><a href="{{ href('/belege/' ~ r.id) }}">{{ r.vendor or "—" }}</a></td>
+          <td class="num">{{ r.net_amount|eur }}</td>
+          <td>{{ zeile.reason }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="ok">Nichts offen.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}
