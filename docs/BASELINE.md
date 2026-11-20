@@ -24,7 +24,7 @@ Tax values and their sources: `docs/tax-rules.md`.
 | `tax/safety.py` | Live-submission gate (`FINAMT_ALLOW_LIVE_SUBMISSION`). |
 | `ui/api.py` | FastAPI backend for the web UI. |
 | `ui/server.py` | Uvicorn launcher (`finamt serve`). |
-| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2; covers receipts + UStVA/USt, no EÜR. A new UI goes to `ui/web/` (tasks UI-1 … UI-6). |
+| `ui/static/` | **Pre-built** React bundle (no source; upstream doesn't publish it). Frozen per D2 (never edited); covers receipts + UStVA/USt, no EÜR. Our own UI goes to `ui/web/` under `/app` (tasks UI-1 … UI-7). |
 | `utils.py`, `progress.py`, `exceptions.py` | Parsing helpers, SSE progress events, exception types. |
 
 Outside the package: `scripts/ustva_test_submission.py` and `scripts/eur_test_submission.py` run a

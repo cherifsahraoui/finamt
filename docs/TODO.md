@@ -9,7 +9,8 @@ self-contained card: goal, verified rules, files, steps, tests and a done-when c
 2. Read `AGENTS.md`, `docs/DECISIONS.md`, and the rows of `docs/tax-rules.md` the card links to.
    Only use tax values whose status is `verified`. If you need one that is not, stop and add a
    `TODO` row instead of guessing.
-3. Make small commits: tests and code for the task, then docs (`NOTICE.md`, this file).
+3. Work on the current work branch (see `AGENTS.md` rule 8); don't open a branch per task.
+   Make small commits: tests and code for the task, then docs (`NOTICE.md`, this file).
 4. When done, set the card status to `done (YYYY-MM-DD)`, move the next card to `ready` if its
    dependencies are met, and update the board.
 5. If a card is `blocked` on the owner, don't work around it: point the owner to the matching step
@@ -42,16 +43,17 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 17 | CLN-3 | Use `vat_splits` for mixed-rate receipts in UStVA/EÜR | M | ready | UST-2 |
 | 18 | DOC-1 | Bring `readme/README_de.md` in line with `README.md` | S | ready | — |
 | 19 | YEAR-1 | Yearly: verify the new Anlage EÜR / UStVA forms | S | waiting | new BMF forms published ([M5](MANUAL-STEPS.md#m5-yearly-update)) |
-| 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | waiting | EUR-2, CLI-1 |
+| 20 | UI-1 | New UI skeleton under `/app` (Jinja2 + htmx), receipt list | M | ready | — |
 | 21 | UI-2 | UI: receipt upload, edit, review warnings | M | waiting | UI-1 |
 | 22 | UI-3 | UI: UStVA / USt preview, validate, test, live | M | waiting | UI-1, UST-2 |
 | 23 | UI-4 | UI: EÜR year view with "ZU PRÜFEN" list | S | waiting | UI-1, EUR-2 |
 | 24 | UI-5 | UI: invoices | M | waiting | UI-1, INV-1 |
-| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | S | waiting | UI-2 … UI-4, owner OK |
+| 25 | UI-6 | Serve the new UI at `/`, retire the compiled bundle | S | waiting | UI-2 … UI-4, UI-7, owner OK |
 | 26 | ERIC-1 | ERiC 44 API: `EricBearbeiteVorgang` without transfer handle | S | done (2026-11-20) | — |
 | 27 | CLN-4 | No "—" placeholder in the UStVA sender address (ERiC rejects it) | S | ready | — |
 | 28 | EUR-6 | EÜR test submission with the owner's Hersteller-ID | S | blocked | owner: [M1–M2](MANUAL-STEPS.md#m2-first-test-submission) |
 | 29 | EUR-7 | EÜR XML: Kz 151 needs the Zeile 42 split (Kz 153) | S | ready | owner input on the split |
+| 30 | UI-7 | UI: Stammdaten and ELSTER settings (Bundesland dropdown) | M | waiting | UI-1 |
 
 ---
 
@@ -373,18 +375,31 @@ Shared rules for all UI cards:
   the HTTP API from Python.
 - German labels; amounts formatted with `Decimal`; no float maths in templates.
 - Never edit `src/finamt/ui/static/` (the old bundle) or the existing `/tax/...` routes.
+- **Look (D2)**: match the old finamt UI. One hand-written `ui/web/static/app.css` with CSS
+  variables, no Tailwind or other build step. Tokens taken from the bundle: background white,
+  text black with muted greys (black at 70 / 50 / 40 % opacity), accent amber (amber-50
+  `oklch(98.7% .022 95.277)` for panels, amber-200/300 `oklch(92.4% .12 95.746)` /
+  `oklch(87.9% .169 91.605)` for borders, amber-400 `oklch(82.8% .189 84.429)` for focus),
+  green for OK, red for errors. Small monospace text (11–12 px) for figures and inputs, system
+  sans-serif for headings; 1 px `black/20` input borders, 2 px black frames around cards, small
+  radius. Amounts right-aligned. Don't copy files out of the bundle.
+- **Layout (D2)**: a left navigation (Übersicht, Belege, UStVA, EÜR, Rechnungen, Stammdaten),
+  an overview that shows what is due next and how many receipts need review. Ideas like these
+  may follow Accountable; its name, logo, colours, icons and texts may not.
 - Each page gets a TestClient test that checks status 200 and the key values in the HTML.
 - The live-submission gate stays: show the "live" button only if
   `finamt.tax.safety.live_submission_allowed()` is true, and keep the 403 on the backend.
 
 ### UI-1: skeleton and receipt list
 
-- **Status**: waiting (EUR-2, CLI-1) · **Size**: M
+- **Status**: ready (D2 updated 2026-11-20) · **Size**: M
 - **Goal**: `/app` shows a base layout (navigation: Belege, UStVA, EÜR, Rechnungen), a project
   selector (projects from `storage.project.list_projects`), and a read-only receipt list filtered by
   year, period, type and category, with the validation warnings.
 - **Files**: `src/finamt/ui/web/` (new), `src/finamt/ui/api.py` (one `app.include_router(...)` line
   placed **before** the SPA catch-all route), `tests/unit/test_web_ui.py`.
+- **Note**: Jinja2 is installed only as a transitive dependency today; add `jinja2` to the
+  dependencies in `pyproject.toml` (and `uv.lock`).
 - **Done when**: `/app` and `/app/belege` render for an empty and a filled temp DB; the old UI at `/`
   still works.
 
@@ -417,3 +432,38 @@ Shared rules for all UI cards:
 - **Status**: waiting (UI-2 … UI-4, owner OK) · **Size**: S
 - **Goal**: serve the new UI at `/`, move the old bundle to `/legacy-ui` for one release, then delete
   it together with the `/tax/ebilanz/*` settings routes it needed. Record it in `NOTICE.md`.
+
+### UI-7: Stammdaten and ELSTER settings
+
+- **Status**: waiting (UI-1) · **Size**: M
+- **Goal**: one page `/app/stammdaten` where the owner enters everything ELSTER needs, without
+  free-text guessing. Today the old UI has a free-text Bundesland field; it shows
+  "Bundesland erforderlich" until the text matches one of its patterns.
+- **Fields**:
+  - Taxpayer: name, street, house number, postcode, city, **Bundesland as a `<select>` of the
+    16 Länder** (full German names), Steuernummer as printed on the Bescheid, Rechtsform
+    (Freiberuflich preselected), USt-IdNr (optional).
+  - Shown read-only, computed on the server after save or with htmx on change: the 13-digit
+    ELSTER Steuernummer, the Finanzamtsnr. (4 digits) and the Länderkennzeichen. When they can't be
+    computed, say which input is wrong ("Steuernummer hat nicht 3 Teile", not
+    "Bundesland erforderlich").
+  - ELSTER: Hersteller-ID, certificate upload (`.pfx`) and PIN, ERiC library path
+    (`ERIC_LIBRARY_PATH`, D4 / CFG-1). Never show the stored PIN back; show "gespeichert".
+- **Compatibility**: store the taxpayer under the same metadata key and field names the old UI
+  uses (`_TAXPAYER_KEY` in `ui/api.py`, field `state` for the Bundesland), and the ELSTER settings
+  where `/tax/ebilanz/settings`, `/tax/ebilanz/cert` and `/tax/ebilanz/eric-home` keep them, so both
+  UIs work side by side until UI-6. Save `state` as the full German name (e.g. `Nordrhein-Westfalen`);
+  the old UI recognises those. Call the repository directly, not the HTTP routes.
+- **Tax rules first (AGENTS rule 3)**: the Steuernummer → 13-digit conversion (per-Land prefix,
+  digit layout, Bayern/NRW special cases) has no row in `docs/tax-rules.md` yet. Add one with the
+  official source (the ERiC documentation of its Steuernummer functions, or the BZSt/ELSTER table);
+  if it can't be verified, mark it `TODO` and compute nothing from it. Reuse
+  `normalise_steuernummer` in `tax/elster.py`; move the 16-Land list to one place that both the
+  dropdown and the conversion use.
+- **Files**: `src/finamt/ui/web/` (route + `templates/stammdaten.html`),
+  `tests/unit/test_web_ui.py`, `docs/tax-rules.md`.
+- **Tests**: page renders for an empty DB; the select has exactly 16 options; saving a known test
+  Steuernummer (e.g. the ELSTER test Finanzamt 9198 numbers) shows the expected 13-digit number;
+  a malformed Steuernummer shows the field error; the PIN is not in the HTML; the saved profile is
+  readable by `GET /taxpayer` (old UI).
+- **Done when**: tests pass; the page is linked in the navigation; tax-rules row added.

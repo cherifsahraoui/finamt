@@ -162,9 +162,9 @@ is not published, so this fork doesn't change it ([decision D2](docs/DECISIONS.m
   (validate → test → live). It works with this fork. Set Rechtsform to *Freiberuflich* so the
   corporate-only pages (KSt, GewSt, Jahresabschluss) stay hidden.
 - **It has no EÜR and no invoices.** Use the CLI and Python for those.
-- **Don't build a UI yourself now.** The missing features come first in the CLI. After that, AI
-  agents build a small server-rendered UI owned by this fork under `/app`, which replaces the bundle
-  later: tasks UI-1 … UI-6 in [docs/TODO.md](docs/TODO.md).
+- **A UI owned by this fork is being built** under `/app`: small, server-rendered, in the same
+  style as the bundle. It replaces the bundle once it covers the same ground: tasks UI-1 … UI-7
+  in [docs/TODO.md](docs/TODO.md).
 
 ## For contributors and AI agents
 
