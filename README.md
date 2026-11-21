@@ -121,7 +121,7 @@ Each receipt has a category and an optional subcategory. For purchases, they dec
 | `services` | `freelance` `consulting` `legal` `accounting` `notary` | 110 Fremdleistungen; legal/accounting/notary → 194 |
 | `products` | `physical_goods` `digital_goods` `merchandise` `samples` | 100 |
 | `material` | `consumables` `raw_materials` `packaging` `merchandise` | 100; consumables → 229; packaging → 227 |
-| `equipment` | `low_value_asset` `computer` `machinery` `furniture` `tools` | 132 GWG up to 800 € net; above → review (AfA) |
+| `equipment` | `low_value_asset` `computer` `machinery` `furniture` `tools` | 132 GWG up to 800 € net; above → review unless in the asset register (`finamt assets add`), then AfA (Kz 130 / 131, Anlage AVEÜR) |
 | `software` | `subscriptions` `pay_as_you_go` `licenses` `hosting` `domains` | 228 EDV-Kosten |
 | `licensing` | `software_licenses` `media_licenses` `other_ip` | 183 |
 | `telecommunication` | `phone` `internet` `bundled` | 280 |

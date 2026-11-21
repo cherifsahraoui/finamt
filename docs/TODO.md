@@ -34,7 +34,7 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 | 8 | INV-1 | Outgoing invoices (§ 14 UStG) with gapless numbering | L | done (2026-11-20) | — |
 | 9 | ZM-1 | Zusammenfassende Meldung (§ 18a UStG) calculation | M | done (2026-11-20) | UST-4 (done) |
 | 10 | EUR-3 | Assets above 800 €: asset register and AfA (A + C, D11) | M | done (2026-11-20) | — |
-| 10b | EUR-3b | Assets: stored register, CLI/UI entry, Anlage AVEÜR XML | L | blocked | AVEÜR schema facts from the ERiC docs on the owner machine (D10) |
+| 10b | EUR-3b | Assets: stored register, CLI entry, Anlage AVEÜR XML | L | blocked (offline done 2026-11-21; ERiC check open) | owner's Hersteller-ID: [M1](MANUAL-STEPS.md#m1-hersteller-id-and-certificate-pin) |
 | 11 | EUR-5 | EÜR: 10-day rule for recurring payments (§ 11 EStG) | S | blocked | source for the 10-day window (tax-rules.md "cash basis") |
 | 12 | CFG-1 | One ERiC path setting (`ERIC_LIBRARY_PATH`) | S | done (2026-11-20) | — |
 | 13 | EUR-4 | EÜR ELSTER XML builder | L | done (2026-11-20) | — |
@@ -226,10 +226,18 @@ Size: **S** under 100 changed lines, **M** a few hundred, **L** several sessions
 
 ### EUR-3b: stored asset register, entry and Anlage AVEÜR
 
-- **Status**: blocked · **Size**: L
-- **Blocked on**: the AVEÜR element names, formats and ERiC rules (606840, 606846, 606847,
-  607901, 607902) come from the ERiC documentation in `private/` on the owner machine (D10);
-  they are not available to a cloud agent. Do not guess them.
+- **Status**: blocked on M1 for the ERiC check; the rest done (2026-11-21) · **Size**: L
+- **Done offline (2026-11-21)**: AVEÜR facts in `docs/tax-rules.md` ("Anlage AVEÜR 2025"), read from
+  the 2025 schema and sheets in `private/` (D10); table `assets` and `add_asset` / `list_assets`;
+  `build_xml(..., assets=)` writes `AVEUER` and refuses a register that differs from Kz 130 / 131;
+  `finamt assets add|list`; EÜR CLI, web and XML pass the register. XML checked against
+  `E77-2025.xsd` with lxml. Rule numbers: the owner's list 606840/606846/607901 is Kz 136 (not built);
+  Kz 131 uses 606839/606847/607902, Kz 130 uses 607849/607850/607903.
+- **Still open**: (1) ERiC validation of the golden report with assets (`TestRealEric::test_register_validates_in_eric`).
+  The Hersteller-ID in `.env` is still the placeholder, and ERiC refuses the documented test ID 74931
+  (610301202). Needs M1. (2) Kz 132 (GWG) stays refused: not re-verified in ERiC. (3) All tangible
+  assets go to "Andere" (no KFZ / Büro split; sums unaffected). (4) No disposals, Sammelposten or
+  Restwert on disposal. (5) No asset entry form in the web UI.
 - **Goal**: (1) SQLite table `assets` + migration, `repo.add_asset / list_assets`, test in
   `tests/integration/test_storage.py`; (2) entry: CLI command and a small route near `/tax/eur`;
   pass the register to `generate_eur`; (3) `eur_elster.build_xml`: build `AVEUER` from the

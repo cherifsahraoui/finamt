@@ -91,8 +91,9 @@ EÜR is not exposed by the API; the bundled UI computes its EÜR view client-sid
 8. **Annual USt**: same report over the year, `period=0` → `_build_ust_annual_e50()`.
 9. **EÜR**: `repo.find_by_period(Jan 1, Dec 31)` → `generate_eur()` → `EURReport`
    (category/subcategory → Kennzahl, or `review_lines`) → `eur_elster.build_xml(report, taxpayer,
-   entnahmen=, einlagen=, hersteller_id=)` (refuses open review lines, AfA, Kz 151, Kz 112 without
-   Kz 140) → `eur_elster.eric_validate()` / `submit(mode="test")`. Live is disabled.
+   entnahmen=, einlagen=, hersteller_id=, assets=)` (refuses open review lines, Kz 132/136/137, Kz 151,
+   Kz 112 without Kz 140, and an asset register that does not match Kz 130/131; builds the Anlage
+   AVEÜR from `assets=`, EUR-3b) → `eur_elster.eric_validate()` / `submit(mode="test")`. Live is disabled.
 
 Money is `Decimal` throughout `tax/` (see `tests/unit/test_decimal_rule.py`).
 `ReceiptData.to_dict()` emits floats for JSON only; do not feed that back into tax code.
@@ -121,7 +122,11 @@ uv run finamt --help                      # CLI
 
 - EÜR ELSTER XML (Kennzahlen not verified), EÜR CLI/API.
 - EÜR: assets > 800 € go to review unless they are in the register passed to `generate_eur(assets=)`
-  (`tax/assets.py`, EUR-3). No stored register, no Anlage AVEÜR XML yet (EUR-3b).
+  (`tax/assets.py`, EUR-3). The register is stored in table `assets` (`storage/sqlite.py`,
+  `add_asset` / `list_assets`) and entered with `finamt assets add|list` (EUR-3b). CLI, web
+  Übersicht / EÜR page, XML and JSON pass the register to the EÜR; Anlage AVEÜR is built in
+  `eur_elster.build_xml` (`_aveuer_rows`, `_append_aveuer`). ERiC check of it: blocked on the
+  owner's Hersteller-ID (MANUAL-STEPS M1). The web UI has no entry form for assets yet.
 - Receipts without German VAT are reported only with a `vat_treatment` (UST-3/4); otherwise a
   report warning. The annual USt (E50) refuses 0 % / tax-free / reverse-charge amounts.
 - `vat_splits` are used by the UStVA for receipts without a single rate (CLN-3).

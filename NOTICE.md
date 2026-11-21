@@ -240,3 +240,17 @@ Branch `baseline/fable-1`:
   `computer_one_year` (BMF letter 22.02.2022).
 - `src/finamt/tax/eur.py` (upstream file): `generate_eur(..., assets=)` posts AfA to Kz 130 / 131;
   review reason for assets over 800 € reworded.
+
+### Anlage AVEÜR and the asset register (EUR-3b, 2026-11-21)
+- `src/finamt/tax/eur_elster.py` (upstream file, changed): `build_xml(..., assets=)` writes
+  `AVEUER` (Immaterielle_WG for Kz 131, Bewegliche_WG/Andere for Kz 130) and refuses a register
+  whose AfA differs from the EÜR lines. Kz 130 / 131 are no longer refused; Kz 132 / 136 / 137 still are.
+- `src/finamt/storage/sqlite.py` (upstream file, changed): table `assets` (created in `_migrate`),
+  `add_asset` / `list_assets`.
+- `src/finamt/cli.py` (upstream file, changed): `finamt assets add` and `finamt assets list`; `finamt eur`
+  passes the register to `generate_eur` and `build_xml`.
+- `src/finamt/ui/web/routes.py` (upstream file, changed): Übersicht, EÜR page, EÜR XML and JSON
+  pass the register (`_assets`). No entry form in the web UI yet.
+- Tests: `tests/unit/test_aveuer.py` (new), `tests/unit/test_eur_elster.py` (refusal tests updated;
+  real-ERiC test added, skipped without `ERIC_LIBRARY_PATH`), `tests/integration/test_storage.py`
+  (asset round trip, migration).
