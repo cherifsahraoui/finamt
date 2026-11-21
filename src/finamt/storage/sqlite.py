@@ -27,6 +27,7 @@ from collections.abc import Iterable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..models import (
     Address,
@@ -40,6 +41,9 @@ from ..models import (
     ReceiptType,
 )
 from .project import resolve_project
+
+if TYPE_CHECKING:
+    from ..tax.assets import Asset
 
 DEFAULT_DB_PATH = resolve_project().db_path  # ~/.finamt/default/finamt.db
 _SCHEMA_VERSION = 1
@@ -195,6 +199,22 @@ class SQLiteRepository:
                 data        TEXT NOT NULL,
                 created_at  TEXT NOT NULL,
                 UNIQUE (year, seq)
+            );
+        """)
+        self._conn.commit()
+
+        # Asset register (EUR-3b): depreciable assets for the AfA (Kz 130 / 131) and AVEÜR.
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS assets (
+                id                TEXT PRIMARY KEY,
+                description       TEXT NOT NULL,
+                acquisition_date  TEXT NOT NULL,
+                cost              TEXT NOT NULL,
+                method            TEXT NOT NULL,
+                useful_life_years INTEGER,
+                intangible        INTEGER NOT NULL DEFAULT 0,
+                receipt_id        TEXT,
+                created_at        TEXT NOT NULL
             );
         """)
         self._conn.commit()
@@ -382,6 +402,53 @@ class SQLiteRepository:
             "SELECT number FROM invoices WHERE corrects = ? ORDER BY seq LIMIT 1", (number,)
         ).fetchone()
         return r["number"] if r else None
+
+    # ------------------------------------------------------------------
+    # Asset register (EUR-3b)
+    # ------------------------------------------------------------------
+
+    def add_asset(self, asset: Asset) -> str:
+        """Store one asset of the register (``finamt.tax.assets.Asset``); returns its id."""
+        import uuid as _uuid
+
+        asset_id = str(_uuid.uuid4())
+        self._exec(
+            """INSERT INTO assets (id, description, acquisition_date, cost, method,
+                   useful_life_years, intangible, receipt_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                asset_id,
+                asset.description,
+                asset.acquisition_date.isoformat(),
+                str(asset.cost),
+                asset.method,
+                asset.useful_life_years,
+                int(asset.intangible),
+                asset.receipt_id,
+                self._now(),
+            ),
+        )
+        return asset_id
+
+    def list_assets(self) -> list[Asset]:
+        """All assets of the register, by acquisition date."""
+        from ..tax.assets import Asset
+
+        rows = self._conn.execute(
+            "SELECT * FROM assets ORDER BY acquisition_date, created_at"
+        ).fetchall()
+        return [
+            Asset(
+                description=r["description"],
+                acquisition_date=date.fromisoformat(r["acquisition_date"]),
+                cost=Decimal(r["cost"]),
+                method=r["method"],
+                useful_life_years=r["useful_life_years"],
+                intangible=bool(r["intangible"]),
+                receipt_id=r["receipt_id"],
+            )
+            for r in rows
+        ]
 
     @staticmethod
     def _now() -> str:

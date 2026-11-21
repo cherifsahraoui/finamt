@@ -841,3 +841,39 @@ class TestInvoiceTables:
             "119.00",
         )
         assert repo.list_invoices(2024) == []
+
+
+# ---------------------------------------------------------------------------
+# Asset register (EUR-3b)
+# ---------------------------------------------------------------------------
+
+
+class TestAssetRegister:
+    def test_add_and_list_round_trip(self, repo):
+        from finamt.tax.assets import COMPUTER_ONE_YEAR, LINEAR, Asset
+
+        laptop = Asset("Laptop", date(2025, 5, 3), Decimal("1499.00"), method=COMPUTER_ONE_YEAR)
+        software = Asset(
+            "Buchhaltungs-Software",
+            date(2024, 1, 10),
+            Decimal("1200.50"),
+            method=LINEAR,
+            useful_life_years=3,
+            intangible=True,
+            receipt_id="beleg-7",
+        )
+        repo.add_asset(laptop)
+        repo.add_asset(software)
+        # ordered by acquisition date; every field survives the round trip
+        assert repo.list_assets() == [software, laptop]
+
+    def test_migration_creates_table_in_existing_db(self, tmp_path):
+        db = tmp_path / "old.db"
+        first = SQLiteRepository(db_path=db)
+        first._conn.execute("DROP TABLE assets")
+        first._conn.commit()
+        first.close()
+
+        reopened = SQLiteRepository(db_path=db)
+        assert reopened.list_assets() == []
+        reopened.close()
