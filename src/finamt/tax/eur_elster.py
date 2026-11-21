@@ -30,11 +30,14 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from lxml import etree
 
+from .assets import Asset, afa_for_year, restwert
 from .elster import (
     NS,
     PRODUKT_NAME,
@@ -137,8 +140,10 @@ _GEWINN_PATHS = (
     "Ermittlung_Gewinn/Stpfl_GuV/E6007202",  # Zeile 97, Kz 219 (rules 600642, 600645)
 )
 
-#: AfA / GWG need Anlage AVEÜR and the depreciation decision (EUR-3b).
-_AFA_KZ = frozenset({"130", "131", "132", "136", "137"})
+#: AfA / GWG lines that are not built yet. Kz 130 / 131 come from the asset register and are
+#: written to Anlage AVEÜR (EUR-3b, :func:`_append_aveuer`). Kz 136 (Grundstücke) and Kz 137
+#: (Sammelposten) have no verified element path in FreiBuch yet.
+_AFA_KZ = frozenset({"132", "136", "137"})
 
 #: Kz 151 (Zeile 41) must come with Zeile 42 "davon Erhaltungsaufwendungen" (Kz 153,
 #: ERiC rule 600522). The report has no such split yet.
@@ -269,9 +274,9 @@ def _checked_totals(report: EURReport) -> dict[str, Decimal]:
         raise ValueError(f"No verified Anlage EÜR element for Kennzahl(en) {unknown}")
     afa = sorted(set(totals) & _AFA_KZ)
     if afa:
-        # TODO(verify): AfA / GWG lines need Anlage AVEÜR — see docs/tax-rules.md (EUR-3b)
+        # TODO(verify): Kz 132 / 136 / 137 — see docs/tax-rules.md (Anlage AVEÜR, EUR-3b)
         raise NotImplementedError(
-            f"Kz {', '.join(afa)}: AfA / GWG lines are not built yet (EUR-3b, needs Anlage AVEÜR)."
+            f"Kz {', '.join(afa)}: GWG / Grundstücke / Sammelposten lines are not built yet."
         )
     split = sorted(set(totals) & _NEEDS_SPLIT_KZ)
     if split:
@@ -293,6 +298,166 @@ def _checked_totals(report: EURReport) -> dict[str, Decimal]:
     return totals
 
 
+@dataclass(frozen=True)
+class _AveRow:
+    """One asset line of the Anlage AVEÜR for one year (all amounts Decimal, 2 places)."""
+
+    description: str
+    acquisition_date: date
+    cost: Decimal  # Anschaffungs-/Herstellungskosten
+    begin: Decimal  # Buchwert zu Beginn des Gewinnermittlungszeitraums
+    zugang: Decimal  # Zugang (cost, in the acquisition year)
+    afa: Decimal  # AfA of the year
+    end: Decimal  # Buchwert am Ende des Gewinnermittlungszeitraums
+
+
+@dataclass(frozen=True)
+class _AveNames:
+    """Element names of one AVEÜR block (Einz fields in XSD order, Sum fields)."""
+
+    bez: str
+    datum: str
+    ak: str
+    beginn: str
+    zugang: str
+    afa: str
+    ende: str
+    sum_ak: str
+    sum_beginn: str
+    sum_zugang: str
+    sum_afa: str
+    sum_ende: str
+
+
+#: Immaterielle_WG (Kz 131). Einz without Abgang (E6007249), Sum without Abgang (E6007228):
+#: FreiBuch has no disposals yet. Sum AfA E6007227 = EÜR Kz 131 (E6002001).
+_AVE_INTANGIBLE = _AveNames(
+    bez="E6007244",
+    datum="E6007258",
+    ak="E6007245",
+    beginn="E6007246",
+    zugang="E6007247",
+    afa="E6007248",
+    ende="E6007250",
+    sum_ak="E6007224",
+    sum_beginn="E6007225",
+    sum_zugang="E6007226",
+    sum_afa="E6007227",
+    sum_ende="E6007229",
+)
+
+#: Bewegliche_WG / Andere (Kz 130). All tangible assets go here; the KFZ and Büro blocks are
+#: not used (ERiC checks only the sums). Sum AfA E6007361 feeds GesamtSum E6007372 = EÜR Kz 130.
+_AVE_TANGIBLE = _AveNames(
+    bez="E6007351",
+    datum="E6007366",
+    ak="E6007352",
+    beginn="E6007354",
+    zugang="E6007356",
+    afa="E6007360",
+    ende="E6007364",
+    sum_ak="E6007353",
+    sum_beginn="E6007355",
+    sum_zugang="E6007357",
+    sum_afa="E6007361",
+    sum_ende="E6007365",
+)
+_AVE_TANGIBLE_GESAMT_AFA = "E6007372"
+
+
+def _aveuer_rows(assets: Iterable[Asset], year: int) -> tuple[list[_AveRow], list[_AveRow]]:
+    """
+    Anlage AVEÜR lines for ``year``: ``(intangible, tangible)``.
+
+    Same AfA as :func:`finamt.tax.eur.generate_eur` (``afa_for_year``), so the sums equal the
+    EÜR lines Kz 131 / 130. Assets bought after ``year`` are left out; assets written off
+    before ``year`` are left out. Every row satisfies begin + zugang − afa = end.
+    """
+    intangible: list[_AveRow] = []
+    tangible: list[_AveRow] = []
+    for asset in assets:
+        if asset.acquisition_date.year > year:
+            continue
+        cost = asset.cost.quantize(_CENT, rounding=ROUND_HALF_UP)
+        row = _AveRow(
+            description=asset.description.strip(),
+            acquisition_date=asset.acquisition_date,
+            cost=cost,
+            begin=restwert(asset, year - 1),
+            zugang=cost if asset.acquisition_date.year == year else Decimal("0"),
+            afa=afa_for_year(asset, year),
+            end=restwert(asset, year),
+        )
+        _check_text("asset description", row.description, 999)
+        if row.begin + row.zugang - row.afa != row.end:
+            raise ValueError(f"AfA register is inconsistent for {row.description!r} ({year})")
+        if row.begin == 0 and row.zugang == 0 and row.afa == 0 and row.end == 0:
+            continue  # fully written off in an earlier year
+        (intangible if asset.intangible else tangible).append(row)
+    return intangible, tangible
+
+
+def _check_aveuer_totals(
+    totals: dict[str, Decimal], intangible: list[_AveRow], tangible: list[_AveRow]
+) -> None:
+    """The AVEÜR AfA must equal the EÜR lines Kz 131 / 130 (ERiC rules 606839, 607850)."""
+    zero = Decimal("0")
+    afa_131 = sum((r.afa for r in intangible), zero)
+    afa_130 = sum((r.afa for r in tangible), zero)
+    kz_131, kz_130 = totals.get("131", zero), totals.get("130", zero)
+    if afa_131 != kz_131 or afa_130 != kz_130:
+        raise ValueError(
+            "Refusing to build: the asset register does not match the EÜR AfA lines "
+            f"(Kz 131: EÜR {kz_131}, AVEÜR {afa_131}; Kz 130: EÜR {kz_130}, AVEÜR {afa_130}). "
+            "Build the report and the XML with the same assets."
+        )
+
+
+def _leaf(parent: etree._Element, name: str, text: str) -> None:
+    etree.SubElement(parent, f"{{{E77_NS}}}{name}").text = text
+
+
+def _group(parent: etree._Element, name: str) -> etree._Element:
+    return etree.SubElement(parent, f"{{{E77_NS}}}{name}")
+
+
+def _aveuer_block(parent: etree._Element, rows: list[_AveRow], names: _AveNames) -> None:
+    """Write the Einz elements and the Sum of one block (XSD order)."""
+    for row in rows:
+        einz = _group(parent, "Einz")
+        _leaf(einz, names.bez, row.description)
+        _leaf(einz, names.datum, row.acquisition_date.strftime("%d.%m.%Y"))
+        _leaf(einz, names.ak, format_amount(row.cost))
+        _leaf(einz, names.beginn, format_amount(row.begin))
+        _leaf(einz, names.zugang, format_amount(row.zugang))
+        _leaf(einz, names.afa, format_amount(row.afa))
+        _leaf(einz, names.ende, format_amount(row.end))
+    total = _group(parent, "Sum")
+    for name, attr in (
+        (names.sum_ak, "cost"),
+        (names.sum_beginn, "begin"),
+        (names.sum_zugang, "zugang"),
+        (names.sum_afa, "afa"),
+        (names.sum_ende, "end"),
+    ):
+        _leaf(total, name, format_amount(sum((getattr(r, attr) for r in rows), Decimal("0"))))
+
+
+def _append_aveuer(e77: etree._Element, intangible: list[_AveRow], tangible: list[_AveRow]) -> None:
+    """Append ``AVEUER`` (after ``EUER``, XSD ``E77_CType``). Nothing if there are no rows."""
+    if not intangible and not tangible:
+        return
+    aveuer = _group(e77, "AVEUER")
+    if intangible:
+        _aveuer_block(_group(aveuer, "Immaterielle_WG"), intangible, _AVE_INTANGIBLE)
+    if tangible:
+        bewegliche = _group(aveuer, "Bewegliche_WG")
+        _aveuer_block(_group(bewegliche, "Andere"), tangible, _AVE_TANGIBLE)
+        gesamt = _group(bewegliche, "GesamtSum")
+        afa = sum((r.afa for r in tangible), Decimal("0"))
+        _leaf(gesamt, _AVE_TANGIBLE_GESAMT_AFA, format_amount(afa))
+
+
 def build_xml(
     eur_report: EURReport,
     taxpayer: EURTaxpayer,
@@ -301,6 +466,7 @@ def build_xml(
     einlagen: Decimal,
     hersteller_id: str,
     test: bool = True,
+    assets: Iterable[Asset] = (),
 ) -> bytes:
     """
     Build the ELSTER envelope for the Anlage EÜR (datenartVersion ``EUER_2025``).
@@ -323,14 +489,19 @@ def build_xml(
         Five-digit ELSTER Hersteller-ID.
     test:
         Must be ``True``: the envelope carries the Testmerker. Live builds are disabled.
+    assets:
+        The asset register (``finamt.tax.assets``) the report was built with. Kz 130 / 131
+        are written with the Anlage AVEÜR built from it; their AfA must match the EÜR lines.
 
     Raises
     ------
     ValueError
         Wrong year, open ``review_lines``, an unknown Kennzahl, Kz 112 without Kz 140,
-        Einlagen below Kz 147, or invalid taxpayer data.
+        Einlagen below Kz 147, invalid taxpayer data, or an asset register that does not
+        match the AfA lines (Kz 130 / 131).
     NotImplementedError
-        AfA / GWG (Kz 130/131/132/136/137), Kz 151, Kz 234 above 2 050 €, or ``test=False``.
+        GWG / Grundstücke / Sammelposten (Kz 132/136/137), Kz 151, Kz 234 above 2 050 €,
+        or ``test=False``.
     """
     if not test:
         raise NotImplementedError(LIVE_DISABLED_MESSAGE)
@@ -338,6 +509,8 @@ def build_xml(
         raise ValueError("hersteller_id must be the 5-digit ELSTER Hersteller-ID")
     _check_taxpayer(taxpayer)
     totals = _checked_totals(eur_report)
+    intangible_rows, tangible_rows = _aveuer_rows(assets, eur_report.year)
+    _check_aveuer_totals(totals, intangible_rows, tangible_rows)
     entnahmen_text = format_amount(entnahmen, signed=False)
     einlagen_text = format_amount(einlagen, signed=False)
     if einlagen < totals.get("147", Decimal("0")):
@@ -405,6 +578,8 @@ def build_xml(
         _append(euer, path, format_amount(amount))
     _append(euer, _ENTNAHMEN_PATH, entnahmen_text)
     _append(euer, _EINLAGEN_PATH, einlagen_text)
+
+    _append_aveuer(e77, intangible_rows, tangible_rows)
 
     vorsatz = (
         ("Unterfallart", "77"),

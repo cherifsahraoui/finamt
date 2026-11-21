@@ -12,14 +12,16 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from lxml import etree
 
 from finamt.tax import eur_elster
+from finamt.tax.assets import COMPUTER_ONE_YEAR, LINEAR, Asset
 from finamt.tax.elster import NS, TESTMERKER, ElsterConfig
-from finamt.tax.eur import EURLinie, EURReport
+from finamt.tax.eur import EURLinie, EURReport, generate_eur
 from finamt.tax.safety import LIVE_SUBMISSION_ENV
 
 # Read at import: the autouse fixture below clears ERIC_LIBRARY_PATH for every test.
@@ -322,7 +324,8 @@ class TestBuildXmlContent:
 
     def test_element_order_follows_field_table(self):
         """With every buildable Kennzahl filled, leaves appear in field-table (XSD) order."""
-        skip = eur_elster._AFA_KZ | eur_elster._NEEDS_SPLIT_KZ
+        # Kz 130 / 131 need a matching asset register (TestAnlageAveuer covers them).
+        skip = eur_elster._AFA_KZ | eur_elster._NEEDS_SPLIT_KZ | {"130", "131"}
         income = {kz: "1.00" for kz, _p, _s in eur_elster._BEIN_FIELDS}
         expenses = {kz: "1.00" for kz, _p, _s in eur_elster._BAUS_FIELDS if kz not in skip}
         xml = _build(_report(income, expenses))
@@ -355,9 +358,15 @@ class TestBuildXmlRefusals:
         with pytest.raises(ValueError, match="schema"):
             _build(_report({"103": "1.00"}, {}, year=2026))
 
-    @pytest.mark.parametrize("kz", ["130", "131", "132", "136", "137"])
+    @pytest.mark.parametrize("kz", ["132", "136", "137"])
     def test_afa_not_built(self, kz):
-        with pytest.raises(NotImplementedError, match="AVEÜR"):
+        with pytest.raises(NotImplementedError, match="not built yet"):
+            _build(_report({}, {kz: "500.00"}))
+
+    @pytest.mark.parametrize("kz", ["130", "131"])
+    def test_afa_without_register_refused(self, kz):
+        # AfA on Kz 130 / 131 needs the asset register; without it the AVEÜR totals are 0.
+        with pytest.raises(ValueError, match="asset register"):
             _build(_report({}, {kz: "500.00"}))
 
     def test_kz_151_needs_zeile_42(self):
@@ -656,6 +665,23 @@ class TestRealEric:
     def test_golden_report_validates_in_eric(self, monkeypatch, tmp_path):
         monkeypatch.setenv(eur_elster.ERIC_LIBRARY_ENV, _REAL_ERIC_PATH)
         xml = _build(_golden_report(), hersteller_id=_REAL_HERSTELLER_ID)
+        result = eur_elster.eric_validate(xml, log_dir=str(tmp_path))
+        assert result.success, f"{result.error_code}: {result.error_message}"
+
+    def test_register_validates_in_eric(self, monkeypatch, tmp_path):
+        # EUR-3b: Anlage AVEÜR with a linear intangible asset and a one-year computer asset
+        # (BMF 22.02.2022). Validation only; nothing is sent.
+        monkeypatch.setenv(eur_elster.ERIC_LIBRARY_ENV, _REAL_ERIC_PATH)
+        assets = [
+            Asset("Buchhaltungs-Software", date(2025, 1, 10), Decimal("1200.50"), LINEAR, 3, True),
+            Asset("Laptop", date(2025, 5, 3), Decimal("1499.00"), COMPUTER_ONE_YEAR),
+            Asset("Büro-Möbel", date(2025, 3, 1), Decimal("2400.00"), LINEAR, 10),
+        ]
+        report = _golden_report()
+        for line in generate_eur([], 2025, assets=assets).ausgaben_lines.values():
+            if line.kz in ("130", "131"):
+                report.ausgaben_lines[f"afa:{line.kz}"] = line
+        xml = _build(report, hersteller_id=_REAL_HERSTELLER_ID, assets=assets)
         result = eur_elster.eric_validate(xml, log_dir=str(tmp_path))
         assert result.success, f"{result.error_code}: {result.error_message}"
 
