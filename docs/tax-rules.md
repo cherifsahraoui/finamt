@@ -218,7 +218,7 @@ example validates offline in ERiC 44.3 (ERiC-44.3-run).
 | format `P` | amount with 2 decimals, sign allowed, 0 allowed. |
 | format `%` | amount with 2 decimals, no sign, 0 allowed. |
 | `EUER/Allg` | `E6000016` name, `E6000023` street, `E6000024` PLZ, `E6000025` Ort, `E6000026` StNr, `E6000017` Art des Betriebs, `E6000602` Rechtsform, `E6000603` Einkunftsart, `E6000604`, `E6000019` (see example and "EUER - Felder" for the code lists). |
-| Anlage AVEÜR | Not always required, but ERiC raises **errors** (e.g. rules 606840, 606846, 606847, 607901, 607902) when AfA lines Kz 130/131/136 are filled without the matching AVEÜR totals, or the values differ. When EUR-3 produces AfA, EUR-4 must also send `AVEUER`. |
+| Anlage AVEÜR | Required when AfA lines are filled: ERiC raises errors if Kz 130/131 (or 136) and the matching AVEÜR totals are missing or differ. Rule numbers and paths: see "Anlage AVEÜR 2025" below (EUR-3b, verified 2026-11-21). Earlier text listed 606840/606846/607901 as Kz 130/131 rules; they belong to Kz 136. |
 
 | Kz | element path under `EUER/` | format | form line |
 |---|---|---|---|
@@ -297,3 +297,25 @@ rule number in sheet "EUER - Regeln"; all are of type *Fehler* (error) unless st
 | Copyright text | `Vorsatz/Copyright` is the software maker's notice; FreiBuch sends `(c) FreiBuch contributors, AGPL-3.0`. | — | "Vorsatz - Felder" | verified (2026-11-20) |
 | `NutzdatenTicket` | 1–32 characters, unique per delivery; with one Nutzdatenblock the schema suggests "1". FreiBuch sends `1`. `TransferTicket` is left out (optional). | — | `ElsterBasisSchema/Schema/headerbasis_datentypen.xsd`, `th000011_extern.xsd` | verified (2026-11-20) |
 | server acceptance | One `submit(mode="test")` with the owner's Hersteller-ID and certificate (`scripts/eur_test_submission.py --send`). | — | — | TODO → EUR-6 (owner, MANUAL-STEPS M2) |
+
+## Anlage AVEÜR 2025 (EUR-3b, `eur_elster.build_xml`)
+
+Facts from `Schema/2025/E77-2025.xsd` and sheets "AVEUER - Felder" / "EUER - Regeln" of
+`Jahresdokumentation_E77_2025.ods` (ERiC 44.3, in `private/`). Verified 2026-11-21 unless marked TODO.
+Rule numbers are ERiC rules of type *Fehler*.
+
+| value | element path (under `E77/`) | format / rule | status |
+|---|---|---|---|
+| position | `AVEUER` is a sibling of `EUER`, after it and before `SZ` (`E77_CType`). Optional. | sequence | verified (2026-11-21) |
+| intangible block | `AVEUER/Immaterielle_WG/Einz*` (max 99): `E6007244` Bezeichnung (1–999 chars), `E6007258` Datum `TT.MM.JJJJ`, `E6007245` AK, `E6007246` Buchwert Beginn, `E6007247` Zugang (sign allowed), `E6007248` AfA, `E6007249` Abgang, `E6007250` Buchwert Ende. Then `Sum`: `E6007224`, `E6007225`, `E6007226`, **`E6007227` AfA-Summe**, `E6007228`, `E6007229`. | XSD; rules 607861–607872, 608046–608048 | verified (2026-11-21) |
+| tangible block (used) | `AVEUER/Bewegliche_WG/Andere/Einz*`: `E6007351` Bezeichnung, `E6007366` Datum, `E6007352` AK, `E6007354` Beginn, `E6007356` Zugang (sign allowed), `E6007358` Sonder-AfA, `E6007360` AfA (sign allowed), `E6007362` Abgang, `E6007364` Ende. `Sum`: `E6007353`, `E6007355`, `E6007357`, `E6007359`, **`E6007361` AfA-Summe**, `E6007363`, `E6007365`. | XSD; rules 606885–606891, 607792–607796 | verified (2026-11-21) |
+| tangible blocks (not used) | `Bewegliche_WG/KFZ` (`E6007311`–`E6007328`) and `Bewegliche_WG/Buero` (`E6007331`–`E6007345`). A KFZ `Sum` needs `E6007328` (`1` Ja / `2` Nein, rule 608050). FreiBuch puts all tangible assets into `Andere`: ERiC checks only the sums, so the Kennzahl totals do not depend on the block. | XSD; rules 606871–607790, 608050 | verified (2026-11-21); split by block: TODO (owner) |
+| Bewegliche GesamtSum | `Bewegliche_WG/GesamtSum/E6007372` = sum of AfA over KFZ, Büro and Andere (`321`, `341`, `361`). Required when any AfA is in a block (606957); must equal the sum (607837). | rules 606957, 606958, 607837, 607850 | verified (2026-11-21) |
+| Kz 131 ↔ AVEÜR | `AVEUER/Immaterielle_WG/Sum/E6007227` = EÜR `BAus/AfA/E6002001` (Kz 131). Rules: 606839 (values differ), 606847 (AVEÜR set, EÜR missing), 607902 (EÜR set, AVEÜR missing). | rules 606839, 606847, 607902 | verified (2026-11-21) |
+| Kz 130 ↔ AVEÜR | `AVEUER/Bewegliche_WG/GesamtSum/E6007372` = EÜR `BAus/AfA/E6002101` (Kz 130). Rules: 607850 (differ), 607849 (AVEÜR set, EÜR missing), 607903 (EÜR set, AVEÜR missing). | rules 607849, 607850, 607903 | verified (2026-11-21) |
+| Kz 136 ↔ AVEÜR (not built) | `AVEUER/Grundstueck/GesamtSum/E6007071` = EÜR `BAus/AfA/E6001901`. Rules 606840, 606846, 607901. These are the rules the earlier text attributed to Kz 130/131. | rules 606840, 606846, 607901 | verified (2026-11-21); Kz 136 not built |
+| Buchwert formula | Ende = Beginn + Zugang − AfA − Abgang, per asset and in the sums (608146, 608046, 608155, 608048). Beginn **or** Zugang must be sent when AfA and Ende are (609540): EUR-3b always sends Beginn, Zugang, AfA and Ende. | rules 608046, 608155, 609540 | verified (2026-11-21) |
+| negative AfA | Negative AfA for bewegliche/immaterielle WG is not allowed unless Einkunftsart is 1 (land and forestry): rules 600082, 600084. FreiBuch's AfA is never negative. | rules 600082, 600084 | verified (2026-11-21) |
+| date | Anschaffungsdatum must not be after the Gewinnermittlungszeitraum (609555). | rule 609555 | verified (2026-11-21) |
+| owner's rule list | The numbers 606840, 606846, 606847, 607901, 607902 are all in the 2025 EÜR sheet "Regeln" (checkEUER_2025.dll contains them). 606847/607902 are Kz 131; 606840/606846/607901 are Kz 136. The Kz 130 rules are 607849/607850/607903. | — | verified (2026-11-21) |
+| Kz 130 / 131 and `_AFA_KZ` | With the register and totals equal (above), `build_xml` builds Kz 130/131. Kz 136 and 137 stay refused (EUR-3b does not cover Grundstücke or Sammelposten). | — | code: EUR-3b |
