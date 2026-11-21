@@ -27,6 +27,7 @@ from collections.abc import Iterable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..models import (
     Address,
@@ -40,6 +41,9 @@ from ..models import (
     ReceiptType,
 )
 from .project import resolve_project
+
+if TYPE_CHECKING:
+    from ..tax.assets import Asset
 
 DEFAULT_DB_PATH = resolve_project().db_path  # ~/.finamt/default/finamt.db
 _SCHEMA_VERSION = 1
@@ -116,6 +120,7 @@ class SQLiteRepository:
             ("receipts", "private_use_share", "TEXT DEFAULT '0'"),
             ("receipts", "validation_warnings", "TEXT"),
             ("receipts", "einfuhr_vat", "TEXT"),
+            ("receipts", "vat_treatment", "TEXT"),
         ]:
             try:
                 self._conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typedef}")
@@ -174,6 +179,42 @@ class SQLiteRepository:
                 key        TEXT PRIMARY KEY,
                 value      TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+        """)
+        # Outgoing invoices (INV-1): gapless numbers per year, one row per issued invoice.
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS invoice_sequence (
+                year        INTEGER PRIMARY KEY,
+                last_number INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS invoices (
+                number      TEXT PRIMARY KEY,
+                year        INTEGER NOT NULL,
+                seq         INTEGER NOT NULL,
+                issue_date  TEXT NOT NULL,
+                customer    TEXT,
+                gross_total TEXT,
+                corrects    TEXT,
+                receipt_id  TEXT,
+                data        TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                UNIQUE (year, seq)
+            );
+        """)
+        self._conn.commit()
+
+        # Asset register (EUR-3b): depreciable assets for the AfA (Kz 130 / 131) and AVEÜR.
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS assets (
+                id                TEXT PRIMARY KEY,
+                description       TEXT NOT NULL,
+                acquisition_date  TEXT NOT NULL,
+                cost              TEXT NOT NULL,
+                method            TEXT NOT NULL,
+                useful_life_years INTEGER,
+                intangible        INTEGER NOT NULL DEFAULT 0,
+                receipt_id        TEXT,
+                created_at        TEXT NOT NULL
             );
         """)
         self._conn.commit()
@@ -277,6 +318,137 @@ class SQLiteRepository:
         with self._lock:
             self._conn.executemany(sql, rows)
             self._conn.commit()
+
+    # ------------------------------------------------------------------
+    # Outgoing invoices (INV-1)
+    # ------------------------------------------------------------------
+
+    def create_invoice(self, year: int, build) -> dict:
+        """
+        Allocate the next number of ``year`` and store the invoice in **one** transaction,
+        so a number is never lost or used twice, even with several processes.
+
+        ``build(seq)`` returns the invoice data dict (it must contain ``number``,
+        ``issue_date``, ``customer``, ``gross_total``, ``corrects``) for sequence ``seq``.
+        Nothing is stored if it raises.
+        """
+        import json as _json
+        from datetime import datetime as _dt
+
+        with self._lock:
+            conn = self._conn
+            conn.execute("BEGIN IMMEDIATE")  # take the write lock before reading the counter
+            try:
+                row = conn.execute(
+                    "SELECT last_number FROM invoice_sequence WHERE year = ?", (year,)
+                ).fetchone()
+                seq = (row[0] if row else 0) + 1
+                data = build(seq)
+                conn.execute(
+                    "INSERT INTO invoice_sequence (year, last_number) VALUES (?, ?) "
+                    "ON CONFLICT(year) DO UPDATE SET last_number = excluded.last_number",
+                    (year, seq),
+                )
+                conn.execute(
+                    """INSERT INTO invoices (number, year, seq, issue_date, customer,
+                           gross_total, corrects, receipt_id, data, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)""",
+                    (
+                        data["number"],
+                        year,
+                        seq,
+                        data["issue_date"],
+                        data.get("customer", {}).get("name"),
+                        data.get("gross_total"),
+                        data.get("corrects"),
+                        _json.dumps(data, ensure_ascii=False),
+                        _dt.now().isoformat(timespec="seconds"),
+                    ),
+                )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+        return data
+
+    def set_invoice_receipt(self, number: str, receipt_id: str) -> None:
+        self._exec("UPDATE invoices SET receipt_id = ? WHERE number = ?", (receipt_id, number))
+
+    def _invoice_row(self, r) -> dict:
+        import json as _json
+
+        d = _json.loads(r["data"])
+        d["receipt_id"] = r["receipt_id"]
+        d["created_at"] = r["created_at"]
+        return d
+
+    def get_invoice(self, number: str) -> dict | None:
+        r = self._conn.execute("SELECT * FROM invoices WHERE number = ?", (number,)).fetchone()
+        return self._invoice_row(r) if r else None
+
+    def list_invoices(self, year: int | None = None) -> list[dict]:
+        """Newest first. Each dict is the stored invoice data plus ``receipt_id``."""
+        if year is None:
+            rows = self._conn.execute("SELECT * FROM invoices ORDER BY year DESC, seq DESC")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM invoices WHERE year = ? ORDER BY seq DESC", (year,)
+            )
+        return [self._invoice_row(r) for r in rows.fetchall()]
+
+    def invoice_corrected_by(self, number: str) -> str | None:
+        """Number of the correction that cancels ``number``, if any."""
+        r = self._conn.execute(
+            "SELECT number FROM invoices WHERE corrects = ? ORDER BY seq LIMIT 1", (number,)
+        ).fetchone()
+        return r["number"] if r else None
+
+    # ------------------------------------------------------------------
+    # Asset register (EUR-3b)
+    # ------------------------------------------------------------------
+
+    def add_asset(self, asset: Asset) -> str:
+        """Store one asset of the register (``finamt.tax.assets.Asset``); returns its id."""
+        import uuid as _uuid
+
+        asset_id = str(_uuid.uuid4())
+        self._exec(
+            """INSERT INTO assets (id, description, acquisition_date, cost, method,
+                   useful_life_years, intangible, receipt_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                asset_id,
+                asset.description,
+                asset.acquisition_date.isoformat(),
+                str(asset.cost),
+                asset.method,
+                asset.useful_life_years,
+                int(asset.intangible),
+                asset.receipt_id,
+                self._now(),
+            ),
+        )
+        return asset_id
+
+    def list_assets(self) -> list[Asset]:
+        """All assets of the register, by acquisition date."""
+        from ..tax.assets import Asset
+
+        rows = self._conn.execute(
+            "SELECT * FROM assets ORDER BY acquisition_date, created_at"
+        ).fetchall()
+        return [
+            Asset(
+                description=r["description"],
+                acquisition_date=date.fromisoformat(r["acquisition_date"]),
+                cost=Decimal(r["cost"]),
+                method=r["method"],
+                useful_life_years=r["useful_life_years"],
+                intangible=bool(r["intangible"]),
+                receipt_id=r["receipt_id"],
+            )
+            for r in rows
+        ]
 
     @staticmethod
     def _now() -> str:
@@ -417,8 +589,9 @@ class SQLiteRepository:
                    (id, counterparty_id, receipt_type, receipt_number,
                     receipt_date, total_amount, vat_percentage, vat_amount,
                     currency, category, subcategory, description,
-                    private_use_share, validation_warnings, einfuhr_vat, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    private_use_share, validation_warnings, einfuhr_vat, vat_treatment,
+                    created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     receipt.id,
                     cp_id,
@@ -435,6 +608,7 @@ class SQLiteRepository:
                     str(getattr(receipt, "private_use_share", "0") or "0"),
                     json.dumps(getattr(receipt, "validation_warnings", []) or []),
                     str(getattr(receipt, "einfuhr_vat", None) or "") or None,
+                    getattr(receipt, "vat_treatment", None),
                     self._now(),
                 ),
             )
@@ -647,6 +821,7 @@ class SQLiteRepository:
             "private_use_share",
             "validation_warnings",
             "einfuhr_vat",
+            "vat_treatment",
         }
         # Financial fields whose change should trigger posting regeneration
         _POSTING_SENSITIVE = {
@@ -688,6 +863,13 @@ class SQLiteRepository:
                 )
             except Exception:
                 receipt_updates.pop("einfuhr_vat", None)
+        if "vat_treatment" in receipt_updates:
+            from finamt.models import VAT_TREATMENTS
+
+            vt = receipt_updates["vat_treatment"] or None
+            if vt is not None and vt not in VAT_TREATMENTS:
+                raise ValueError(f"unknown vat_treatment: {vt!r}")
+            receipt_updates["vat_treatment"] = vt
         if "currency" in receipt_updates:
             raw_cur = str(receipt_updates["currency"]).strip().upper()
             receipt_updates["currency"] = (
@@ -1260,6 +1442,10 @@ class SQLiteRepository:
         receipt.created_at = row["created_at"] if "created_at" in row.keys() else None
         # einfuhr_vat — Einfuhrumsatzsteuer (§ 15 Abs. 1 Satz 1 Nr. 2 UStG)
         receipt.einfuhr_vat = self._dec(row["einfuhr_vat"]) if "einfuhr_vat" in row.keys() else None
+        # vat_treatment — why a receipt has no German VAT (UST-3/UST-4); NULL for older rows
+        receipt.vat_treatment = (
+            row["vat_treatment"] if "vat_treatment" in row.keys() else None
+        ) or None
         return receipt
 
     # ------------------------------------------------------------------

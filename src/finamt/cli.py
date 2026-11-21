@@ -24,6 +24,13 @@ Usage examples
     # Generate report from already-stored receipts
     finamt ustva --quarter 1 --year 2024 --output ustva_q1.json
 
+    # Monthly UStVA, and which filing period § 18 UStG suggests for 2025
+    finamt ustva --month 3 --year 2025
+    finamt ustva --suggest-period --year 2025
+
+    # EÜR for 2025 (exit code 1 while receipts need review)
+    finamt eur --year 2025 --output eur_2025.json
+
     # Use a custom DB path
     finamt ustva --input-dir receipts/ --db /tmp/mydb.db
 
@@ -59,7 +66,18 @@ from rich.console import Console
 from finamt import FinanceAgent
 from finamt.storage import get_repository
 from finamt.storage.sqlite import DEFAULT_DB_PATH
+from finamt.tax.eur import generate_eur
 from finamt.tax.ustva import generate_ustva
+
+#: § 18 Abs. 2 S. 2 UStG: monthly Voranmeldungen if the prior-year tax was more than this
+#: (docs/tax-rules.md row "> 9 000 €").
+MONTHLY_THRESHOLD = Decimal("9000")
+#: § 18 Abs. 2 S. 3 UStG: the Finanzamt may exempt from Voranmeldungen at or below this
+#: (docs/tax-rules.md row "≤ 2 000 €").
+EXEMPTION_THRESHOLD = Decimal("2000")
+#: § 18 Abs. 2a UStG: monthly on request if the prior-year surplus was more than this
+#: (docs/tax-rules.md row "> 9 000 € surplus").
+SURPLUS_THRESHOLD = Decimal("9000")
 
 # ---------------------------------------------------------------------------
 # CLI class
@@ -246,6 +264,12 @@ class FinamtCLI:
         me, de = ends[quarter]
         return date(year, ms, ds), date(year, me, de)
 
+    @staticmethod
+    def _month_bounds(month: int, year: int) -> tuple[date, date]:
+        start = date(year, month, 1)
+        nxt = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        return start, date.fromordinal(nxt.toordinal() - 1)
+
     def ingest_receipts(
         self,
         input_dir: Path,
@@ -286,29 +310,36 @@ class FinamtCLI:
 
     def run_ustva(
         self,
-        quarter: int,
+        quarter: int | None,
         year: int,
         db_path: Path | None = None,
         output: Path | None = None,
         output_dir: Path | None = None,
+        month: int | None = None,
     ) -> int:
         """
-        Generate and print a UStVA report for the given quarter.
+        Generate and print a UStVA report for the given quarter or month.
 
         Args:
+            month:      Report one month instead of a quarter (``quarter`` is ignored).
             output:     Explicit output file path. Takes priority over output_dir.
             output_dir: Directory to write an auto-named file
-                        (e.g. ``ustva_q1_2024.json``).
+                        (e.g. ``ustva_q1_2024.json``, ``ustva_m03_2024.json``).
         """
-        start, end = self._quarter_bounds(quarter, year)
+        if month is not None:
+            start, end = self._month_bounds(month, year)
+            label, tag = f"{month:02d}/{year}", f"m{month:02d}"
+        else:
+            quarter = quarter or 1
+            start, end = self._quarter_bounds(quarter, year)
+            label, tag = f"Q{quarter} {year}", f"q{quarter}"
 
         with get_repository(db_path) as repo:
             receipts = list(repo.find_by_period(start, end))
 
         if not receipts:
             print(
-                f"No receipts found for Q{quarter} {year}.\n"
-                f"Run with --input-dir to scan and store PDFs first."
+                f"No receipts found for {label}.\nRun with --input-dir to scan and store PDFs first."
             )
             return 1
 
@@ -321,12 +352,138 @@ class FinamtCLI:
             out_path = output
         elif output_dir:
             output_dir.mkdir(parents=True, exist_ok=True)
-            out_path = output_dir / f"ustva_q{quarter}_{year}.json"
+            out_path = output_dir / f"ustva_{tag}_{year}.json"
 
         if out_path:
             report.to_json(out_path)
             print(f"Report saved to {out_path}")
 
+        return 0
+
+    def suggest_period(self, year: int, db_path: Path | None = None) -> int:
+        """
+        Print which Voranmeldungszeitraum § 18 Abs. 2 / 2a UStG suggests for ``year``,
+        from the tax of ``year - 1`` computed from the stored receipts. Information only.
+        """
+        prior = year - 1
+        start, end = date(prior, 1, 1), date(prior, 12, 31)
+        with get_repository(db_path) as repo:
+            receipts = list(repo.find_by_period(start, end))
+
+        if not receipts:
+            print(
+                f"Keine Belege für {prior} gespeichert; keine Empfehlung möglich.\n"
+                "Bei Neugründung gilt § 18 Abs. 2 S. 4 bzw. S. 6 UStG: bitte selbst prüfen."
+            )
+            return 1
+
+        tax = generate_ustva(receipts, start, end).net_liability
+        print(f"Umsatzsteuer {prior} (aus gespeicherten Belegen): {tax:.2f} EUR")
+        if tax > MONTHLY_THRESHOLD:
+            print(
+                f"Voranmeldungszeitraum {year}: monthly (Steuer > 9 000 €, § 18 Abs. 2 S. 2 UStG)"
+            )
+        else:
+            print(f"Voranmeldungszeitraum {year}: quarterly (§ 18 Abs. 2 S. 1 UStG)")
+            if tax <= EXEMPTION_THRESHOLD:
+                print(
+                    "exemption possible: Steuer ≤ 2 000 €, das Finanzamt kann von "
+                    "Voranmeldungen befreien (§ 18 Abs. 2 S. 3 UStG)"
+                )
+        if -tax > SURPLUS_THRESHOLD:
+            print("Überschuss > 9 000 €: monthly auf Antrag möglich (§ 18 Abs. 2a UStG)")
+        print("Nur zur Information; maßgeblich ist die Festsetzung des Finanzamts.")
+        return 0
+
+    def run_eur(
+        self,
+        year: int,
+        db_path: Path | None = None,
+        output: Path | None = None,
+        kleinunternehmer: bool = False,
+        xml: Path | None = None,
+        validate: bool = False,
+        elster: dict | None = None,
+        pdf: Path | None = None,
+    ) -> int:
+        """
+        Print the EÜR for ``year``. Returns 1 when receipts still need a manual
+        decision (``review_lines``), so the result can't be filed by mistake.
+
+        ``xml`` / ``validate`` (EUR-9): build the Anlage EÜR XML (Testmerker) and write it,
+        and/or check it with ERiC (``ERIC_LIBRARY_PATH``; nothing is sent). ``elster`` holds
+        ``art_des_betriebs``, ``grundstuecke_entnommen``, ``entnahmen``, ``einlagen``.
+        """
+        with get_repository(db_path) as repo:
+            receipts = list(repo.find_by_period(date(year, 1, 1), date(year, 12, 31)))
+            meta = {k: repo.get_metadata(k) or {} for k in ("taxpayer", "elster_misc")}
+            assets = repo.list_assets()
+
+        if not receipts:
+            print(f"No receipts found for {year}.")
+            return 1
+
+        report = generate_eur(receipts, year, kleinunternehmer=kleinunternehmer, assets=assets)
+        print(report.summary())
+
+        if output:
+            report.to_json(output)
+            print(f"Report saved to {output}")
+
+        if report.review_lines:
+            print(
+                f"\n✗  {len(report.review_lines)} Beleggruppe(n) ZU PRÜFEN: "
+                "nicht abgabereif, erst entscheiden."
+            )
+            return 1
+        if xml or validate or pdf:
+            return self._eur_elster(
+                report, meta, xml, validate or bool(pdf), elster or {}, pdf, assets
+            )
+        return 0
+
+    @staticmethod
+    def _eur_elster(
+        report,
+        meta: dict,
+        xml_out: Path | None,
+        validate: bool,
+        e: dict,
+        pdf: Path | None = None,
+        assets=(),
+    ) -> int:
+        from finamt.tax import eur_elster
+        from finamt.ui.web.helpers import eur_taxpayer
+
+        taxpayer, fehler = eur_taxpayer(
+            meta["taxpayer"], e.get("art_des_betriebs") or "", e.get("grundstuecke_entnommen")
+        )
+        if fehler:
+            print(f"✗  {fehler}", file=sys.stderr)
+            return 1
+        try:
+            xml = eur_elster.build_xml(
+                report,
+                taxpayer,
+                entnahmen=e.get("entnahmen") or Decimal("0"),
+                einlagen=e.get("einlagen") or Decimal("0"),
+                hersteller_id=(meta["elster_misc"].get("hersteller_id") or "").strip(),
+                assets=assets,
+            )
+        except (ValueError, NotImplementedError) as exc:
+            print(f"✗  Anlage EÜR nicht erstellt: {exc}", file=sys.stderr)
+            return 1
+        if xml_out:
+            xml_out.write_bytes(xml)
+            print(f"Anlage EÜR XML (Testmerker) → {xml_out}")
+        if validate:
+            res = eur_elster.eric_validate(xml, pdf_path=str(pdf.resolve()) if pdf else None)
+            if not res.success:
+                print(f"✗  ERiC: {res.error_code}: {res.error_message}", file=sys.stderr)
+                return 1
+            print("✓  ERiC-Prüfung ohne Fehler. Nichts gesendet.")
+            if pdf:
+                print(f"Druckansicht (PDF, *** Vorschau ***) → {pdf}")
         return 0
 
 
@@ -467,8 +624,19 @@ def cmd_batch(
 
 @app.command("ustva")
 def cmd_ustva(
-    quarter: Annotated[int, QuarterOpt] = 1,
+    quarter: Annotated[int | None, QuarterOpt] = None,
     year: Annotated[int, YearOpt] = date.today().year,
+    month: Annotated[
+        int | None,
+        typer.Option("--month", min=1, max=12, help="Month (1–12) instead of a quarter."),
+    ] = None,
+    suggest_period: Annotated[
+        bool,
+        typer.Option(
+            "--suggest-period",
+            help="Suggest monthly/quarterly filing for --year from the prior year's tax.",
+        ),
+    ] = False,
     input_dir: Annotated[
         Path | None, typer.Option("--input-dir", help="Scan & ingest PDFs before reporting.")
     ] = None,
@@ -482,11 +650,20 @@ def cmd_ustva(
     receipt_type: Annotated[str, ReceiptType] = "purchase",
     db: Annotated[Path | None, DbOpt] = None,
 ) -> None:
-    """Generate a UStVA (VAT pre-return) report for a fiscal quarter."""
+    """Generate a UStVA (VAT pre-return) report for a quarter (default Q1) or a month."""
     if verbose:
         logging.basicConfig(level=logging.DEBUG, format="%(levelname)-8s %(name)s %(message)s")
+    if quarter is not None and month is not None:
+        raise typer.BadParameter("--quarter and --month are mutually exclusive.")
+    if quarter is not None and not 1 <= quarter <= 4:
+        raise typer.BadParameter("--quarter must be 1–4.")
 
     cli = FinamtCLI()
+    if suggest_period:
+        rc = cli.suggest_period(year=year, db_path=db)
+        if rc != 0:
+            raise typer.Exit(code=rc)
+        return
     if input_dir:
         cli.ingest_receipts(
             input_dir=input_dir,
@@ -500,9 +677,224 @@ def cmd_ustva(
         db_path=db,
         output=output,
         output_dir=output_dir,
+        month=month,
     )
     if rc != 0:
         raise typer.Exit(code=rc)
+
+
+# ---------------------------------------------------------------------------
+# eur sub-command
+# ---------------------------------------------------------------------------
+
+
+@app.command("eur")
+def cmd_eur(
+    year: Annotated[int, YearOpt] = date.today().year - 1,
+    output: Annotated[
+        Path | None, typer.Option("--output", help="Write JSON report to this path.")
+    ] = None,
+    kleinunternehmer: Annotated[
+        bool,
+        typer.Option("--kleinunternehmer", help="§ 19 UStG: gross amounts, sales on Kz 111."),
+    ] = False,
+    db: Annotated[Path | None, DbOpt] = None,
+    xml: Annotated[
+        Path | None,
+        typer.Option("--xml", help="Write the Anlage EÜR XML (with Testmerker) to this file."),
+    ] = None,
+    validate: Annotated[
+        bool, typer.Option("--validate", help="Check the Anlage EÜR with ERiC; nothing is sent.")
+    ] = False,
+    art_des_betriebs: Annotated[
+        str, typer.Option("--art-des-betriebs", help="Form line: type of business (max 25).")
+    ] = "",
+    grundstuecke: Annotated[
+        str | None,
+        typer.Option(
+            "--grundstuecke",
+            help="Line 11: land withdrawn or sold this year? 'ja' or 'nein' (no default).",
+        ),
+    ] = None,
+    pdf: Annotated[
+        Path | None,
+        typer.Option(
+            "--pdf", help="ERiC print preview of the Anlage EÜR to this file (implies --validate)."
+        ),
+    ] = None,
+    entnahmen: Annotated[str, typer.Option("--entnahmen", help="Line 106, EUR.")] = "0",
+    einlagen: Annotated[str, typer.Option("--einlagen", help="Line 107, EUR.")] = "0",
+) -> None:
+    """EÜR (Anlage EÜR Kennzahlen) for a year; exit code 1 while receipts need review."""
+    if grundstuecke not in (None, "ja", "nein"):
+        raise typer.BadParameter("--grundstuecke must be 'ja' or 'nein'.")
+    try:
+        betraege = {
+            "entnahmen": Decimal(entnahmen.replace(",", ".")),
+            "einlagen": Decimal(einlagen.replace(",", ".")),
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise typer.BadParameter("--entnahmen / --einlagen must be amounts.") from exc
+    rc = FinamtCLI().run_eur(
+        year=year,
+        db_path=db,
+        output=output,
+        kleinunternehmer=kleinunternehmer,
+        xml=xml,
+        validate=validate,
+        pdf=pdf,
+        elster={
+            "art_des_betriebs": art_des_betriebs,
+            "grundstuecke_entnommen": {"ja": True, "nein": False}.get(grundstuecke or ""),
+            **betraege,
+        },
+    )
+    if rc != 0:
+        raise typer.Exit(code=rc)
+
+
+# ---------------------------------------------------------------------------
+# invoice sub-commands (INV-1)
+# ---------------------------------------------------------------------------
+
+invoice_app = typer.Typer(help="Outgoing invoices (§ 14 UStG) with gapless numbers.")
+app.add_typer(invoice_app, name="invoice")
+
+assets_app = typer.Typer(help="Asset register for the AfA (EÜR Kz 130 / 131, Anlage AVEÜR).")
+app.add_typer(assets_app, name="assets")
+
+
+@assets_app.command("add")
+def cmd_assets_add(
+    description: Annotated[str, typer.Option("--description", help="Bezeichnung, e.g. Laptop.")],
+    acquired: Annotated[str, typer.Option("--acquired", help="Acquisition date, YYYY-MM-DD.")],
+    cost: Annotated[str, typer.Option("--cost", help="Net cost in EUR, e.g. 1499.00.")],
+    method: Annotated[
+        str,
+        typer.Option(
+            "--method",
+            help="linear (life from the AfA table) or computer_one_year (BMF 22.02.2022).",
+        ),
+    ] = "linear",
+    life: Annotated[
+        int | None, typer.Option("--life", help="Useful life in years (linear).")
+    ] = None,
+    intangible: Annotated[
+        bool, typer.Option("--intangible", help="Intangible asset (Kz 131), e.g. software.")
+    ] = False,
+    receipt_id: Annotated[
+        str | None, typer.Option("--receipt-id", help="Id of the linked purchase receipt.")
+    ] = None,
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """Add an asset to the register. The AfA is computed from it for the EÜR."""
+    from finamt.tax.assets import Asset
+
+    try:
+        asset = Asset(
+            description=description,
+            acquisition_date=date.fromisoformat(acquired),
+            cost=Decimal(cost),
+            method=method,
+            useful_life_years=life,
+            intangible=intangible,
+            receipt_id=receipt_id,
+        )
+    except (ValueError, ArithmeticError) as exc:
+        print(f"✗  {exc}", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    with get_repository(db or DEFAULT_DB_PATH) as repo:
+        repo.add_asset(asset)
+    print(f"✓  {asset.description}: {asset.cost:.2f} EUR, {asset.method}, Kz {asset.kz}")
+
+
+@assets_app.command("list")
+def cmd_assets_list(db: Annotated[Path | None, DbOpt] = None) -> None:
+    """List the asset register."""
+    with get_repository(db or DEFAULT_DB_PATH) as repo:
+        assets = repo.list_assets()
+    if not assets:
+        print("No assets in the register.")
+        return
+    for a in assets:
+        print(
+            f"{a.acquisition_date.isoformat()}  {a.cost:>10.2f} EUR  Kz {a.kz}  "
+            f"{a.method:<18}  {a.useful_life_years or 1:>2} J.  {a.description}"
+        )
+
+
+def _pdf_dir_for(db_path: Path) -> Path:
+    from finamt.storage.project import layout_from_db_path
+
+    try:
+        return layout_from_db_path(db_path).pdfs_dir
+    except Exception:  # noqa: BLE001 — a DB outside a project folder
+        return db_path.parent / "pdfs"
+
+
+@invoice_app.command("new")
+def cmd_invoice_new(
+    file: Annotated[
+        Path,
+        typer.Option(
+            "--file",
+            help="JSON: customer, issue_date, supply_date or supply_period, lines, notes. "
+            "The supplier comes from the project's Stammdaten unless given.",
+        ),
+    ],
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """Issue an invoice: next number, PDF, and a stored sale receipt."""
+    from finamt.invoicing import Invoice, issue_invoice, supplier_from_taxpayer
+
+    db_path = db or DEFAULT_DB_PATH
+    data = json.loads(file.read_text(encoding="utf-8"))
+    with get_repository(db_path) as repo:
+        if not data.get("supplier"):
+            data["supplier"] = vars(supplier_from_taxpayer(repo.get_metadata("taxpayer") or {}))
+        data.setdefault("issue_date", date.today().isoformat())
+        try:
+            inv = Invoice.from_dict(data)
+            res = issue_invoice(repo, inv, _pdf_dir_for(Path(db_path)))
+        except ValueError as exc:
+            print(f"✗  {exc}", file=sys.stderr)
+            raise typer.Exit(code=1) from exc
+    print(f"✓  {inv.title} {inv.number}: {inv.gross_total:.2f} EUR → {res.pdf_path}")
+
+
+@invoice_app.command("list")
+def cmd_invoice_list(
+    year: Annotated[int | None, YearOpt] = None,
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """List issued invoices, newest first."""
+    with get_repository(db or DEFAULT_DB_PATH) as repo:
+        rows = repo.list_invoices(year)
+    if not rows:
+        print("Keine Rechnungen.")
+        return
+    for r in rows:
+        corr = f"  (storniert {r['corrects']})" if r.get("corrects") else ""
+        kunde = (r.get("customer") or {}).get("name") or "—"
+        print(f"{r['number']}  {r['issue_date']}  {kunde:<30} {r['gross_total']:>12} EUR{corr}")
+
+
+@invoice_app.command("cancel")
+def cmd_invoice_cancel(
+    number: Annotated[str, typer.Argument(help="Invoice number, e.g. 2025-0001.")],
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """Cancel an invoice with a Rechnungskorrektur (Storno) under its own number."""
+    from finamt.invoicing import cancel_invoice
+
+    db_path = db or DEFAULT_DB_PATH
+    with get_repository(db_path) as repo:
+        try:
+            res = cancel_invoice(repo, number, _pdf_dir_for(Path(db_path)))
+        except ValueError as exc:
+            print(f"✗  {exc}", file=sys.stderr)
+            raise typer.Exit(code=1) from exc
+    print(f"✓  {res.invoice.title} {res.invoice.number} storniert {number} → {res.pdf_path}")
 
 
 # ---------------------------------------------------------------------------

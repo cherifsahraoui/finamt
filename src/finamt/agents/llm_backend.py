@@ -88,11 +88,15 @@ def _get_mlx(repo_id: str) -> tuple[Any, Any]:
 def _get_hf_pipeline(repo_id: str) -> Any:
     if repo_id not in _hf_cache:
         import torch  # type: ignore[import]
-        from transformers import pipeline  # type: ignore[import]
+        from transformers import BitsAndBytesConfig, pipeline  # type: ignore[import]
 
+        if torch.cuda.is_available():
+            backend = f"4-bit on {torch.cuda.get_device_name(0)}"
+        else:
+            backend = "float32 on CPU; a 7B model can require more than 24 GB of RAM"
         print(
-            f"\n[finamt] First run — downloading model {repo_id}\n"
-            f"         (~4 GB, cached in ~/.cache/huggingface/hub)\n"
+            f"\n[finamt] Loading model {repo_id} ({backend})\n"
+            "         Model files are cached in ~/.cache/huggingface/hub\n"
         )
         kwargs: dict[str, Any] = {
             "task": "text-generation",
@@ -100,13 +104,8 @@ def _get_hf_pipeline(repo_id: str) -> Any:
             "max_new_tokens": 1024,
         }
         if torch.cuda.is_available():
-            try:
-                # 4-bit quantisation on CUDA via bitsandbytes
-                kwargs["model_kwargs"] = {"load_in_4bit": True}
-                kwargs["device_map"] = "auto"
-            except Exception:
-                kwargs.pop("model_kwargs", None)
-                kwargs["device"] = 0
+            kwargs["model_kwargs"] = {"quantization_config": BitsAndBytesConfig(load_in_4bit=True)}
+            kwargs["device_map"] = "auto"
         else:
             # CPU fallback — slow but functional
             kwargs["device_map"] = "cpu"

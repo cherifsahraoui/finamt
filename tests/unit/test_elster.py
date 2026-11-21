@@ -24,7 +24,6 @@ from finamt.tax.elster import (
     ELSTER_URL_PRODUCTION,
     ELSTER_URL_TEST,
     TESTMERKER,
-    EBilanzEnvelopeBuilder,
     ElsterConfig,
     ElsterEricClient,
     ElsterXMLBuilder,
@@ -35,7 +34,7 @@ from finamt.tax.elster import (
     bundesland_kz_from_city,
     normalise_steuernummer,
 )
-from finamt.tax.ustva import generate_ustva
+from finamt.tax.ustva import USTVAReport, generate_ustva
 
 try:
     from lxml import etree as ET
@@ -60,6 +59,11 @@ def _cfg(**kwargs) -> ElsterConfig:
         "steuernummer": "21/815/08150",
         "finanzamt_nr": "2181",
         "bundesland_kz": "21",
+        # sender address: build_ustva refuses to build without it (CLN-4)
+        "street": "Testgasse",
+        "house_number": "1",
+        "postal_code": "12345",
+        "city": "Musterstadt",
     }
     defaults.update(kwargs)
     return ElsterConfig(**defaults)
@@ -128,7 +132,8 @@ class TestBundeslandZiel:
     def test_all_16_states_present(self):
         from finamt.tax.elster import _BUNDESLAND_ZIEL
 
-        assert len(_BUNDESLAND_ZIEL) == 16
+        # 01–16 plus the 13-digit Steuernummer prefixes, all mapping to 16 Länder
+        assert len(set(_BUNDESLAND_ZIEL.values())) == 16
 
     def test_unknown_code_returns_input(self):
         assert _bundesland_ziel("99") == "99"
@@ -196,6 +201,22 @@ class TestUstvaKennzahlen:
         assert "Kz66" in kz
         assert Decimal(kz["Kz66"]) == Decimal("19.00")
 
+    def test_import_vat_only_goes_to_kz62(self):
+        report = USTVAReport(period_start=Q1_S, period_end=Q1_E, einfuhr_vat=Decimal("50.00"))
+        kz = _ustva_kennzahlen(report)
+        assert kz == {"Kz62": "50.00", "Kz83": "-50.00"}
+
+    def test_import_vat_not_in_kz66(self):
+        receipts = [_receipt(vat_amount="19.00", vat_percentage="19")]
+        report = generate_ustva(receipts, Q1_S, Q1_E)
+        report.einfuhr_vat = Decimal("50.00")
+        kz = _ustva_kennzahlen(report)
+        assert kz["Kz66"] == "19.00"
+        assert kz["Kz62"] == "50.00"
+        # Kz 83 = output − (Kz 66 + Kz 62), same value as before the split
+        assert kz["Kz83"] == "-69.00"
+        assert Decimal(kz["Kz83"]) == -report.total_input_vat
+
     def test_single_sale_19pct_gets_kz81(self):
         receipts = [
             _receipt(
@@ -224,9 +245,50 @@ class TestUstvaKennzahlen:
         assert "Kz86" in kz
 
     def test_empty_report_no_kz(self):
+        # Kz 83 must always be filled in (USt1A-2026 Zeile 50), "0.00" for an empty period.
         report = generate_ustva([], Q1_S, Q1_E)
         kz = _ustva_kennzahlen(report)
-        assert kz == {}
+        assert kz == {"Kz83": "0.00"}
+
+    def test_credit_note_reduces_kz81(self):
+        # § 17 Abs. 1 UStG: credit notes go into the base and tax lines themselves.
+        receipts = [
+            _receipt(total_amount="1190.00", vat_amount="190.00", receipt_type="sale"),
+            _receipt(total_amount="-595.00", vat_amount="-95.00", receipt_type="sale"),
+        ]
+        report = generate_ustva(receipts, Q1_S, Q1_E)
+        kz = _ustva_kennzahlen(report)
+        assert kz == {"Kz81": "500", "Kz83": "95.00"}
+
+    def test_credit_note_only_gives_negative_kz81(self):
+        receipts = [_receipt(total_amount="-595.00", vat_amount="-95.00", receipt_type="sale")]
+        report = generate_ustva(receipts, Q1_S, Q1_E)
+        kz = _ustva_kennzahlen(report)
+        assert kz == {"Kz81": "-500", "Kz83": "-95.00"}
+
+    def test_credit_note_7pct_gives_negative_kz86(self):
+        receipts = [
+            _receipt(
+                total_amount="-107.00", vat_amount="-7.00", vat_percentage="7", receipt_type="sale"
+            )
+        ]
+        kz = _ustva_kennzahlen(generate_ustva(receipts, Q1_S, Q1_E))
+        assert kz == {"Kz86": "-100", "Kz83": "-7.00"}
+
+    def test_purchase_credit_note_reduces_kz66(self):
+        receipts = [
+            _receipt(total_amount="238.00", vat_amount="38.00"),
+            _receipt(total_amount="-119.00", vat_amount="-19.00"),
+        ]
+        kz = _ustva_kennzahlen(generate_ustva(receipts, Q1_S, Q1_E))
+        assert kz == {"Kz66": "19.00", "Kz83": "-19.00"}
+
+    def test_no_kz50_or_kz37_for_credit_notes(self):
+        # Kz 50 / 37 are only for uncollectible amounts (§ 17 Abs. 2 Nr. 1 UStG).
+        receipts = [_receipt(total_amount="-595.00", vat_amount="-95.00", receipt_type="sale")]
+        kz = _ustva_kennzahlen(generate_ustva(receipts, Q1_S, Q1_E))
+        assert "Kz50" not in kz
+        assert "Kz37" not in kz
 
     def test_sale_net_rounded_down(self):
         # Net = 100.99 → should be truncated to 100
@@ -340,6 +402,32 @@ class TestElsterXMLBuilder:
         receipts = [_receipt(receipt_type="sale")]
         return generate_ustva(receipts, Q1_S, Q1_E)
 
+    @pytest.mark.parametrize("field", ["street", "postal_code", "city"])
+    def test_missing_sender_address_refused(self, field):
+        """CLN-4: no "—" / "00000" placeholders; ERiC rejects them."""
+        with pytest.raises(ValueError, match="sender address missing"):
+            ElsterXMLBuilder(_cfg(**{field: ""})).build_ustva(self._report(), YEAR, 1)
+
+    def test_sender_address_written(self):
+        xml = ElsterXMLBuilder(_cfg()).build_ustva(self._report(), YEAR, 1).decode()
+        assert "Testgasse 1</" in xml and ">12345</" in xml and ">Musterstadt</" in xml
+        assert "—" not in xml
+
+    def test_from_env_reads_address(self, monkeypatch):
+        for k, v in {
+            "FINAMT_ELSTER_CERT_PATH": "/x.pfx",
+            "FINAMT_ELSTER_CERT_PASSWORD": "p",
+            "FINAMT_ELSTER_STEUERNUMMER": "9198011310010",
+            "FINAMT_ELSTER_FINANZAMT_NR": "9198",
+            "FINAMT_ELSTER_BUNDESLAND_KZ": "BY",
+            "FINAMT_ELSTER_STREET": "Weg",
+            "FINAMT_ELSTER_PLZ": "80331",
+            "FINAMT_ELSTER_CITY": "München",
+        }.items():
+            monkeypatch.setenv(k, v)
+        cfg = ElsterConfig.from_env()
+        assert (cfg.street, cfg.postal_code, cfg.city) == ("Weg", "80331", "München")
+
     def test_returns_bytes(self):
         builder = ElsterXMLBuilder(_cfg())
         xml = builder.build_ustva(self._report(), year=YEAR, period=1)
@@ -392,64 +480,6 @@ class TestElsterXMLBuilder:
         monkeypatch.setattr(elster_mod, "_LXML_AVAILABLE", False)
         with pytest.raises(ImportError, match="lxml"):
             ElsterXMLBuilder(_cfg())
-
-
-# ---------------------------------------------------------------------------
-# EBilanzEnvelopeBuilder (requires lxml)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(not _LXML, reason="lxml not installed")
-class TestEBilanzEnvelopeBuilder:
-    def _xbrl(self) -> bytes:
-        """Minimal well-formed XBRL stub."""
-        return b"""<?xml version="1.0"?>
-<xbrl xmlns="http://www.xbrl.org/2003/instance">
-  <context id="D-2024"><entity><identifier scheme="x">21815</identifier></entity>
-  <period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
-</xbrl>"""
-
-    def test_returns_bytes(self):
-        env = EBilanzEnvelopeBuilder(_cfg())
-        xml = env.build(self._xbrl(), year=YEAR)
-        assert isinstance(xml, bytes)
-
-    def test_verfahren_is_elster_bilanz(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR)
-        assert b"ElsterBilanz" in xml
-
-    def test_datenart_is_bilanz(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR)
-        assert b"Bilanz" in xml
-
-    def test_testmerker_in_test_mode(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR, use_test=True)
-        assert TESTMERKER.encode() in xml
-
-    def test_testmerker_absent_live(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR, use_test=False)
-        assert TESTMERKER.encode() not in xml
-
-    def test_xbrl_embedded_in_nutzdaten(self):
-        xml = EBilanzEnvelopeBuilder(_cfg()).build(self._xbrl(), year=YEAR)
-        root = ET.fromstring(xml)
-        nutzdaten = root.findall(".//{*}Nutzdaten")
-        assert len(nutzdaten) > 0
-
-    def test_invalid_xbrl_raises_value_error(self):
-        env = EBilanzEnvelopeBuilder(_cfg())
-        with pytest.raises(ValueError, match="XBRL"):
-            env.build(b"<not valid xml<<<", year=YEAR)
-
-    def test_datenart_version_constant(self):
-        assert EBilanzEnvelopeBuilder.DATENART_VERSION == "Bilanz_6_9"
-
-    def test_import_error_without_lxml(self, monkeypatch):
-        import finamt.tax.elster as elster_mod
-
-        monkeypatch.setattr(elster_mod, "_LXML_AVAILABLE", False)
-        with pytest.raises(ImportError, match="lxml"):
-            EBilanzEnvelopeBuilder(_cfg())
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +577,8 @@ class TestElsterEricClientInit:
 
     def test_eric_load_error_returns_failure(self, tmp_path):
         client = ElsterEricClient(_cfg(), eric_home=str(tmp_path), log_dir=str(tmp_path))
-        result = client.validate_ebilanz(b"<xbrl/>", year=YEAR)
+        report = USTVAReport(period_start=date(YEAR, 1, 1), period_end=date(YEAR, 3, 31))
+        result = client.validate_ust(report, year=YEAR, period=41)
         # Should fail gracefully — library doesn't exist
         assert result.success is False
         assert result.error_code in ("ERIC_LOAD_ERROR", "XML_BUILD_ERROR", "ERIC_ERROR")

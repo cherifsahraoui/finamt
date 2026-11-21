@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Archiv") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Abgegebene Erklärungen") }}</h1>
+{% if fehler %}<div class="notice err" role="alert">{{ _(fehler) }}</div>{% endif %}
+
+{% if submissions %}
+<table class="list">
+  <thead><tr><th>{{ _("Art") }}</th><th>{{ _("Jahr") }}</th><th>{{ _("Zeitpunkt (UTC)") }}</th><th>{{ _("Telenummer") }}</th><th>{{ _("Dateien") }}</th></tr></thead>
+  <tbody>
+  {% for s in submissions %}
+    <tr>
+      <td class="mono">{{ s.type }}</td>
+      <td class="mono">{{ s.year }}</td>
+      <td class="mono">{{ (s.submitted_at or "")[:16]|replace("T", " ") }}</td>
+      <td class="mono">{{ s.telenummer or "—" }}</td>
+      <td>
+        {% if s.xml_filename %}<a href="{{ href('/archiv/datei', name=s.xml_filename) }}">XML</a>{% endif %}
+        {% if s.pdf_filename %} · <a href="{{ href('/archiv/datei', name=s.pdf_filename) }}" target="_blank" rel="noopener">{{ _("PDF (ERiC)") }}</a>{% endif %}
+        {% for art, feld, label in [("copy", "copy_filename", "Eigene Kopie"), ("final", "final_filename", "Bescheid")] %}
+          <div class="row">
+          {% if s[feld] %}
+            <a href="{{ href('/archiv/datei', name=s[feld]) }}">{{ _(label) }}</a>
+            <form method="post" action="{{ href('/archiv/dokument/loeschen') }}" class="inline">
+              <input type="hidden" name="typ" value="{{ s.type }}"><input type="hidden" name="jahr" value="{{ s.year }}"><input type="hidden" name="art" value="{{ art }}">
+              <button type="submit" class="link">{{ _("entfernen") }}</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ href('/archiv/dokument') }}" enctype="multipart/form-data" class="row">
+              <input type="hidden" name="typ" value="{{ s.type }}"><input type="hidden" name="jahr" value="{{ s.year }}"><input type="hidden" name="art" value="{{ art }}">
+              <label class="hint">{{ _(label) }} <input type="file" name="datei" required accept=".pdf,.xml,.png,.jpg,.jpeg,.txt"></label>
+              <button type="submit">{{ _("Hochladen") }}</button>
+            </form>
+          {% endif %}
+          </div>
+        {% endfor %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">{{ _("Keine archivierten Erklärungen.") }}</p>
+{% endif %}
+
+{% if dateien %}
+<section class="card">
+  <h2>{{ _("Alle Dateien im Archivordner") }}</h2>
+  <ul>{% for f in dateien %}<li><a class="mono" href="{{ href('/archiv/datei', name=f) }}">{{ f }}</a></li>{% endfor %}</ul>
+</section>
+{% endif %}
+<p class="hint">{{ _("Nur verbindliche Übermittlungen werden archiviert; Testfälle nicht.") }}</p>
+{% endblock %}

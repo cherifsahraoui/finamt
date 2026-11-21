@@ -69,11 +69,6 @@ class TestEricClientGate:
         with pytest.raises(LiveSubmissionDisabledError):
             client.submit_ust(_empty_report(), year=2024, period=41)
 
-    def test_live_ebilanz_submit_blocked(self, tmp_path):
-        client = ElsterEricClient(_cfg(), eric_home=str(tmp_path), use_test=False)
-        with pytest.raises(LiveSubmissionDisabledError):
-            client.submit_ebilanz(b"<xbrl/>", year=2024)
-
     def test_validate_only_not_blocked(self, tmp_path):
         client = ElsterEricClient(_cfg(), eric_home=str(tmp_path), use_test=False)
         result = client.validate_ust(_empty_report(), year=2024, period=41)

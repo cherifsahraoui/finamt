@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Stammdaten") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Stammdaten") }}</h1>
+{% if gespeichert %}<div class="notice ok">{{ _("Gespeichert.") }}</div>{% endif %}
+
+<section class="card">
+  <h2>{{ _("Steuerpflichtige Person") }}</h2>
+  {% if land_unbekannt %}
+  <div class="notice warn">{{ _("Gespeichertes Bundesland „{land}“ ist nicht eindeutig. Bitte unten auswählen.", land=land_unbekannt) }}</div>
+  {% endif %}
+  <form method="post" action="{{ href('/stammdaten/steuerpflichtiger') }}" class="grid">
+    <label class="wide">{{ _("Name") }} <input name="name" value="{{ tp.name or '' }}" autocomplete="name"></label>
+    <label class="wide">{{ _("Straße und Hausnummer") }} <input name="street" value="{{ tp.street or '' }}" autocomplete="street-address"></label>
+    <label class="wide">{{ _("Adresszusatz") }} <input name="address_supplement" value="{{ tp.address_supplement or '' }}"></label>
+    <label>{{ _("PLZ") }} <input name="postcode" value="{{ tp.postcode or '' }}" inputmode="numeric" class="short" autocomplete="postal-code"></label>
+    <label>{{ _("Ort") }} <input name="city" value="{{ tp.city or '' }}" autocomplete="address-level2"></label>
+    <label>{{ _("Bundesland") }}
+      <select name="state" id="state" required>
+        <option value="">— {{ _("bitte wählen") }} —</option>
+        {% for b in laender %}<option value="{{ b.name }}" {% if land and land.name == b.name %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="wide sub">
+      <label>{{ _("Steuernummer für die Umsatzsteuer") }} <input name="tax_number" id="tax_number" value="{{ tp.tax_number or '' }}" class="mono"
+        placeholder="{{ _('wie auf dem Bescheid, z. B. 198/113/10010') }}">
+        <span class="hint">{{ _("Für UStVA und Umsatzsteuer-Erklärung. Wer nur eine Steuernummer hat, trägt sie hier ein.") }}</span></label>
+      <div id="stnr" aria-live="polite"
+           hx-get="/app/stammdaten/steuernummer" hx-include="#state,#tax_number"
+           hx-trigger="change from:#state, change from:#tax_number, keyup changed delay:400ms from:#tax_number">
+        {% include "_steuernummer.html" %}
+      </div>
+    </div>
+    <div class="wide sub">
+      <label>{{ _("Steuernummer für die Einkommensteuer (falls eine andere)") }} <input name="tax_number_est" id="tax_number_est" value="{{ tp.tax_number_est or '' }}" class="mono"
+        placeholder="{{ _('leer = dieselbe Nummer') }}">
+        <span class="hint">{{ _("Manche Finanzämter vergeben eine eigene Nummer für die Umsatzsteuer.") }}</span></label>
+      <div id="stnr_est" aria-live="polite"
+           hx-get="/app/stammdaten/steuernummer" hx-include="#state,#tax_number_est" hx-vals='{"art": "est"}'
+           hx-trigger="change from:#state, change from:#tax_number_est, keyup changed delay:400ms from:#tax_number_est">
+        {% with info = info_est, art = "est" %}{% include "_steuernummer.html" %}{% endwith %}
+      </div>
+    </div>
+    <fieldset class="wide sub">
+      <legend>{{ _("Anlage EÜR abgeben unter") }}</legend>
+      {% for k, v in euer_wahlen.items() %}
+      <label class="check"><input type="radio" name="euer_steuernummer" value="{{ k }}" {% if euer_wahl == k %}checked{% endif %}> {{ _(v) }}</label>
+      {% endfor %}
+      <p class="hint">{{ _("Nur nötig bei zwei verschiedenen Nummern. Welche gilt, steht im Schreiben des Finanzamts zur Vergabe der Nummern; im Zweifel dort nachfragen.") }}</p>
+      {% if zwei_nummern and not euer_wahl %}<p class="field-error">{{ _("Bitte auswählen.") }}</p>{% endif %}
+    </fieldset>
+    <label>{{ _("USt-IdNr. (optional)") }} <input name="vat_id" value="{{ tp.vat_id or '' }}" class="mono" placeholder="DE123456789"></label>
+    <label>{{ _("Rechtsform") }}
+      <select name="rechtsform">
+        <option value="Freiberuflich" {% if (tp.rechtsform or "Freiberuflich") == "Freiberuflich" %}selected{% endif %}>{{ _("Freiberuflich") }}</option>
+        {% if tp.rechtsform and tp.rechtsform != "Freiberuflich" %}
+        <option value="{{ tp.rechtsform }}" selected>{{ tp.rechtsform }}</option>
+        {% endif %}
+      </select>
+    </label>
+    <div class="wide actions"><button type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
+<section class="card" id="zeitraum">
+  <h2>{{ _("Voranmeldungszeitraum") }}</h2>
+  <form method="post" action="{{ href('/stammdaten/zeitraum') }}" class="stack">
+    <label class="check"><input type="radio" name="monatlich" value="" {% if not settings.monatlich %}checked{% endif %}> {{ _("vierteljährlich") }}</label>
+    <label class="check"><input type="radio" name="monatlich" value="1" {% if settings.monatlich %}checked{% endif %}> {{ _("monatlich") }}</label>
+    <label class="check"><input type="checkbox" name="dauerfrist" value="1" {% if settings.dauerfrist %}checked{% endif %}> {{ _("Dauerfristverlängerung (Frist einen Monat später)") }}</label>
+    <p class="hint">{{ _("Welcher Zeitraum gilt, legt das Finanzamt fest (§ 18 Abs. 2 UStG).") }}</p>
+    <div class="actions"><button type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
+<section class="card" id="kleinunternehmer">
+  <h2>{{ _("Kleinunternehmer (§ 19 UStG)") }}</h2>
+  <form method="post" action="{{ href('/stammdaten/kleinunternehmer') }}" class="stack">
+    <label>{{ _("Jahre als Kleinunternehmer") }}
+      <input name="jahre" value="{{ settings.kleinunternehmer_jahre|join(', ') }}" class="mono" placeholder="{{ _('z. B. 2024, 2025') }}">
+    </label>
+    {% if ku_fehler %}<p class="field-error" role="alert">{{ _(ku_fehler) }}</p>{% endif %}
+    <p class="hint">{{ _("In diesen Jahren rechnet die EÜR alle Einnahmen in Kz 111 und alle Beträge brutto, ohne Umsatzsteuer-Zeilen.") }}</p>
+    <div class="actions"><button type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>ELSTER</h2>
+  <form method="post" action="{{ href('/stammdaten/elster') }}" enctype="multipart/form-data" class="grid">
+    <label>{{ _("Hersteller-ID") }} <input name="hersteller_id" value="{{ hersteller_id }}" class="mono short" inputmode="numeric" pattern="\d{5}" title="{{ _('5 Ziffern') }}"></label>
+    <label>{{ _("Zertifikat (.pfx)") }}
+      <input type="file" name="zertifikat" accept=".pfx,.p12">
+      <span class="hint">{% if cert_gespeichert %}{{ _("gespeichert") }}{% else %}{{ _("noch keins") }}{% endif %}</span>
+    </label>
+    <label>{{ _("Zertifikats-PIN") }}
+      <input type="password" name="cert_pin" value="" autocomplete="off" placeholder="{{ _('gespeichert') if pin_gespeichert else '' }}">
+      <span class="hint">{{ _("Leer lassen, um die gespeicherte PIN zu behalten.") }}</span>
+    </label>
+    <label class="wide">{{ _("ERiC-Pfad (Ordner mit ericapi)") }} <input name="eric_home" value="{{ eric_home }}" class="mono"
+      placeholder="{{ _('sonst Umgebungsvariable FINAMT_ERIC_HOME') }}"></label>
+    <div class="wide actions"><button type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+  <p class="hint">{{ _("Gespeichert im Projektordner, wie in der alten Oberfläche. Die PIN wird nie wieder angezeigt.") }}</p>
+</section>
+{% endblock %}

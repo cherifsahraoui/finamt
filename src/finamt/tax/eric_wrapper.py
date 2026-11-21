@@ -120,6 +120,42 @@ class _eric_druck_parameter_t(Structure):
     ]
 
 
+#: eric_druck_parameter_t.version — "muss derzeit 4 sein" (ERiC 44.3 API-Referenz, eric_types.h).
+DRUCK_PARAMETER_VERSION = 4
+
+
+def _pdf_path_bytes(path: str | os.PathLike) -> bytes:
+    """
+    pdfName as ERiC expects it: Windows ANSI code page ("mbcs"); elsewhere the file-system
+    encoding (ERiC 44.3 API-Referenz, eric_druck_parameter_t::pdfName). macOS would need the
+    decomposed UTF-8 form, which FreiBuch doesn't support yet.
+    """
+    s = os.fspath(path)
+    return s.encode("mbcs") if os.name == "nt" else os.fsencode(s)
+
+
+def make_druck_parameter(
+    pdf_path: str | os.PathLike, *, vorschau: bool, fuss_text: str | None = None
+) -> _eric_druck_parameter_t:
+    """
+    Print parameters for ``EricBearbeiteVorgang`` (Entwicklerhandbuch 44.3, Tabelle 6-2):
+    ``vorschau=True`` with VALIDIERE + DRUCKE (EBV-2, preview, nothing sent);
+    ``vorschau=False`` with VALIDIERE + SENDE + DRUCKE (EBV-4 / EBV-6). ERiC writes the PDF
+    to ``pdf_path`` (no callback). The returned structure keeps the encoded path alive.
+    """
+    p = _eric_druck_parameter_t()
+    p.version = DRUCK_PARAMETER_VERSION
+    p.vorschau = 1 if vorschau else 0
+    p.duplexDruck = 0
+    p._pdf_name = _pdf_path_bytes(pdf_path)  # keep a reference for the call's lifetime
+    p.pdfName = p._pdf_name
+    p._fuss = fuss_text.encode(_ENCODING) if fuss_text else None
+    p.fussText = p._fuss
+    p.pdfCallback = EricPdfCallback()  # NULL: ERiC writes the file itself
+    p.pdfCallbackBenutzerdaten = None
+    return p
+
+
 class _eric_verschluesselungs_parameter_t(Structure):
     _fields_ = [
         ("version", c_uint32),
@@ -149,10 +185,10 @@ def _load_library(home_dir: str) -> CDLL:
         # name,                            restype,                          argtypes
         ("EricInitialisiere",              c_int,    [S, S]),
         ("EricBeende",                     c_int,    None),
+        # ERiC >= 44: no transferHandle argument any more (Releasenotes 5.2.6, ERIC-36021)
         ("EricBearbeiteVorgang",           c_int,    [S, S, c_uint32,
                                                        POINTER(_eric_druck_parameter_t),
                                                        POINTER(_eric_verschluesselungs_parameter_t),
-                                                       POINTER(EricTransferHandle),
                                                        _EricRueckgabepufferHandle,
                                                        _EricRueckgabepufferHandle]),
         ("EricCheckXML",                   c_int,    [S, S, _EricRueckgabepufferHandle]),
@@ -268,32 +304,33 @@ class EricSession:
         crypto_params: _eric_verschluesselungs_parameter_t | None = None,
         response_buffer: _EricRueckgabepufferHandle | None = None,
         server_buffer: _EricRueckgabepufferHandle | None = None,
+        druck_params: _eric_druck_parameter_t | None = None,
     ) -> tuple[int, int | None]:
         """
         Call EricBearbeiteVorgang.
 
         Returns
         -------
-        (eric_return_code, transfer_handle_or_None)
+        (eric_return_code, None)
+            The second element is always None: ERiC 44 removed the transfer
+            handle (Releasenotes 5.2.6, ERIC-36021). The transfer ticket is in
+            the server response. The tuple shape is kept for existing callers.
         """
-        th = EricTransferHandle(0)
-        th_ref = byref(th) if (flags & ERIC_SENDE) else None
-
         cp_ref: POINTER | None = None
         if crypto_params is not None:
             cp_ref = byref(crypto_params)
+        dp_ref = byref(druck_params) if druck_params is not None else None
 
         rc = self._lib.EricBearbeiteVorgang(
             _enc(xml_bytes if isinstance(xml_bytes, bytes) else xml_bytes.encode()),
             _enc(datenart_version),
             c_uint32(flags),
-            None,  # druck_parameter — not used for E-Bilanz
+            dp_ref,  # druck_parameter: NULL unless a PDF is requested (ERIC_DRUCKE)
             cp_ref,
-            th_ref,
             response_buffer,
             server_buffer,
         )
-        return rc, th.value if th_ref is not None else None
+        return rc, None
 
     def get_error_text(self, code: int) -> str:
         h = self._buf_create()

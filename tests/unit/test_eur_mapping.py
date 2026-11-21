@@ -189,7 +189,8 @@ class TestGwg:
         ("marketing", "gifts", "marketing/gifts"),
         ("insurance", "health", "insurance/health"),
         ("donations", None, "donations"),
-        ("tax_settlement", "vat_payment", "tax_settlement"),
+        ("tax_settlement", "income_tax", "tax_settlement"),
+        ("tax_settlement", None, "tax_settlement"),
         ("capital_movement", "withdrawal", "capital_movement"),
     ],
 )
@@ -239,7 +240,11 @@ class TestSales:
             ],
             YEAR,
         )
-        assert report.kz_totals() == {"103": Decimal("50.00"), "112": Decimal("100.00")}
+        assert report.kz_totals() == {
+            "103": Decimal("50.00"),
+            "112": Decimal("100.00"),
+            "140": Decimal("19.00"),
+        }
 
     def test_equipment_sale_is_102(self):
         _, ln = _only_line(generate_eur([_r("equipment", receipt_type="sale")], YEAR))

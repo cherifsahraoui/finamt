@@ -91,11 +91,12 @@ class TestCallLlm:
         assert (tmp_path / "agent1_raw.txt").exists()
         assert (tmp_path / "agent1_parsed.json").exists()
 
-    def test_backend_exception_returns_none(self):
+    def test_backend_exception_returns_none_and_logs_error(self, caplog):
         with patch("finamt.agents.llm_backend.generate") as mock_gen:
             mock_gen.side_effect = RuntimeError("model error")
             result = call_llm("prompt", _cfg(max_retries=2), "agent1", ["k"])
         assert result is None
+        assert "LLM request for agent1 failed after 2 attempts" in caplog.text
 
     def test_empty_response_returns_none(self):
         with patch("finamt.agents.llm_backend.generate", return_value=""):

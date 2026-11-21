@@ -8,9 +8,8 @@ Supported form types:
   - USt    (Umsatzsteuerjahreserklärung) — annual VAT return (E50)
   - EÜR    (Einnahmen-Überschuss-Rechnung) — see finamt.tax.eur_elster (stub)
 
-Legacy (out of scope for this fork, kept unchanged, unused by CLI/API):
-  - EBilanzEnvelopeBuilder and ElsterEricClient.*_ebilanz — E-Bilanz envelope.
-    KSt (E30) builder was removed; see NOTICE.md and legacy/.
+The KSt (E30) and E-Bilanz code of upstream finamt was removed (out of scope for this
+fork); see NOTICE.md and legacy/.
 
 ELSTER transmission overview:
   1. Build the payload XML (NutzdatenXML) for the specific form.
@@ -144,6 +143,24 @@ _BUNDESLAND_ZIEL: dict[str, str] = {
     "14": "SN",
     "15": "ST",
     "16": "TH",
+    # The pre-built UI sends the prefix of the 13-digit Steuernummer instead
+    # (Landesnummer, Finanzamtsdaten.ods). Map those too; no key collides with
+    # 01–16 except 10/11, which mean the same Land in both. <Ziel> must be a
+    # BundeslandSType code (headerbasis_datentypen.xsd). See docs/tax-rules.md.
+    "21": "SH",
+    "22": "HH",
+    "23": "NI",
+    "24": "HB",
+    "5": "NW",
+    "26": "HE",
+    "27": "RP",
+    "28": "BW",
+    "9": "BY",
+    "30": "BB",
+    "40": "MV",
+    "32": "SN",
+    "31": "ST",
+    "41": "TH",
     # also accept 2-letter values passed directly
 }
 
@@ -267,6 +284,13 @@ class ElsterConfig:
             finanzamt_nr=os.environ["FINAMT_ELSTER_FINANZAMT_NR"],
             bundesland_kz=os.environ["FINAMT_ELSTER_BUNDESLAND_KZ"],
             hersteller_id=os.environ.get("FINAMT_ELSTER_HERSTELLER_ID", ""),
+            # Sender address (UStVA DatenLieferant, USt E50); optional here, but
+            # build_ustva refuses to build without street, PLZ and city (CLN-4).
+            company_name=os.environ.get("FINAMT_ELSTER_NAME", ""),
+            street=os.environ.get("FINAMT_ELSTER_STREET", ""),
+            house_number=os.environ.get("FINAMT_ELSTER_HOUSE_NUMBER", ""),
+            postal_code=os.environ.get("FINAMT_ELSTER_PLZ", ""),
+            city=os.environ.get("FINAMT_ELSTER_CITY", ""),
         )
 
 
@@ -295,7 +319,7 @@ class SubmissionResult:
 #
 # Official conversion table (Bundesministerium der Finanzen):
 # Bundesland             Local format         Unified 13-digit
-# Baden-Württemberg      FF/BBB/UUUUP         28FF0BBBUUUUP
+# Baden-Württemberg      FFBBB/UUUUP          28FF0BBBUUUUP
 # Bayern                 FFF/BBB/UUUUP         9FFF0BBBUUUUP
 # Berlin                 FF/BBB/UUUUP         11FF0BBBUUUUP
 # Brandenburg            0FF/BBB/UUUUP        30FF0BBBUUUUP
@@ -454,7 +478,9 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
     Amounts for Kz 81/86/35 are rounded DOWN to whole euros per ELSTER spec.
     VAT amounts are rounded to 2 decimal places (cents).
 
-    ⚠  Verify these mappings against the current official UStVA form on www.elster.de.
+    Credit notes (§ 17 Abs. 1 UStG) reduce the base and tax lines themselves, so a line
+    is written whenever it is non-zero, negative values with a leading minus. Kz 83 is
+    always written ("Bitte in jedem Fall ausfüllen"). See docs/tax-rules.md.
     """
 
     def whole(d: Decimal) -> str:
@@ -468,16 +494,16 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
 
     # Standard tax rates
     ln19 = report.line_19
-    if ln19 and ln19.sale_net > 0:
+    if ln19 and ln19.sale_net != 0:
         kz["Kz81"] = whole(ln19.sale_net)  # Umsätze 19 % — Bemessungsgrundlage
 
     ln7 = report.line_7
-    if ln7 and ln7.sale_net > 0:
+    if ln7 and ln7.sale_net != 0:
         kz["Kz86"] = whole(ln7.sale_net)  # Umsätze 7 % — Bemessungsgrundlage
 
     # Other rates (Kz 35 / Kz 36)
     for rate_key, ln in report.lines.items():
-        if rate_key not in ("19", "7", "unknown") and ln.sale_net > 0:
+        if rate_key not in ("19", "7", "unknown") and ln.sale_net != 0:
             kz["Kz35"] = kz.get("Kz35", "")
             kz["Kz36"] = kz.get("Kz36", "")
             # Accumulate if multiple non-standard rates
@@ -486,18 +512,44 @@ def _ustva_kennzahlen(report: USTVAReport) -> dict[str, str]:
             kz["Kz35"] = whole(prev_net + ln.sale_net)
             kz["Kz36"] = cents(prev_tax + ln.sale_vat)
 
-    # Input tax (Vorsteuer) — all rates combined in Kz 66
-    if report.total_input_vat > 0:
-        kz["Kz66"] = cents(report.total_input_vat)
+    # Input tax from invoices (§ 15 Abs. 1 S. 1 Nr. 1 UStG) — all rates in Kz 66.
+    # Import VAT (§ 15 Abs. 1 S. 1 Nr. 2 UStG) has its own line, Kz 62
+    # (USt1A-2026 section F; see docs/tax-rules.md).
+    invoice_input_vat = sum((ln.purchase_vat for ln in report.lines.values()), Decimal("0"))
+    # A purchase credit note reduces Kz 66 as well (non-zero, may be negative), so
+    # that Kz 83 always equals the sum of the lines written.
+    if invoice_input_vat != 0:
+        kz["Kz66"] = cents(invoice_input_vat)
+    if report.einfuhr_vat > 0:
+        kz["Kz62"] = cents(report.einfuhr_vat)
 
-    # Net VAT balance — Kz83 is mandatory whenever there is any reportable
-    # VAT activity. For a genuinely empty report (no turnover, no input tax)
-    # we omit it entirely so a blank/Null period doesn't emit a spurious
-    # "0.00" Kz83.
+    # Receipts without German VAT (UST-3, UST-4). Bases in whole euros, tax in cents.
+    # Sales: Kz 87 (0 %, § 12 Abs. 3), Kz 48 (tax-free), Kz 21 (§ 18b S. 1 Nr. 2,
+    # EU B2B services), Kz 45 (other non-taxable), Kz 60 (§ 13b Abs. 5, recipient in DE).
+    # Purchases where FreiBuch owes the tax: Kz 46/47 (§ 13b Abs. 1), Kz 84/85
+    # (§ 13b Abs. 2), deducted again in Kz 67. See docs/tax-rules.md.
+    for name, value in (
+        ("Kz87", report.zero_rate_net),
+        ("Kz48", report.tax_free_net),
+        ("Kz21", report.rc_eu_sales_net),
+        ("Kz45", report.non_eu_sales_net),
+        ("Kz60", report.rc_domestic_sales_net),
+        ("Kz46", report.rc_eu_purchase_net),
+        ("Kz84", report.rc_other_purchase_net),
+    ):
+        if value != 0:
+            kz[name] = whole(value)
+    if report.rc_eu_purchase_net != 0:
+        kz["Kz47"] = cents(report.rc_eu_purchase_vat)
+    if report.rc_other_purchase_net != 0:
+        kz["Kz85"] = cents(report.rc_other_purchase_vat)
+    if report.rc_input_vat != 0:
+        kz["Kz67"] = cents(report.rc_input_vat)
+
+    # Kz 83 must always be filled in, "0.00" for an empty period (USt1A-2026 Zeile 50).
     # Positive = Zahllast (payment due); negative = Überschuss (refund)
     net = report.total_output_vat - report.total_input_vat
-    if kz or net != 0:
-        kz["Kz83"] = cents(net)
+    kz["Kz83"] = cents(net)
 
     return kz
 
@@ -645,15 +697,32 @@ class ElsterXMLBuilder:
                 _dts.date.today().isoformat().replace("-", "")
             )
             # DatenLieferant inside Anmeldungssteuern (company address, distinct from TransferHeader/DatenLieferant)
+            # No placeholders: ERiC rejects "—" (610001002, ZeichenNichtImZeichensatz), and a
+            # made-up PLZ would be wrong data. Refuse before calling ERiC instead (CLN-4).
+            missing = [
+                label
+                for label, value in (
+                    ("Straße", self.config.street),
+                    ("PLZ", self.config.postal_code),
+                    ("Ort", self.config.city),
+                )
+                if not (value or "").strip()
+            ]
+            if missing:
+                raise ValueError(
+                    "UStVA sender address missing (" + ", ".join(missing) + "): set it in "
+                    "Stammdaten or via FINAMT_ELSTER_STREET / FINAMT_ELSTER_PLZ / "
+                    "FINAMT_ELSTER_CITY."
+                )
             dl = etree.SubElement(anm, _u("DatenLieferant"))
             etree.SubElement(dl, _u("Name")).text = (self.config.company_name or steuernr).strip()[
                 :45
             ]
-            etree.SubElement(dl, _u("Strasse")).text = (
-                f"{self.config.street} {self.config.house_number}".strip()[:30] or "—"
-            )
-            etree.SubElement(dl, _u("PLZ")).text = (self.config.postal_code or "00000").strip()[:5]
-            etree.SubElement(dl, _u("Ort")).text = (self.config.city or "—").strip()[:29]
+            etree.SubElement(
+                dl, _u("Strasse")
+            ).text = f"{self.config.street} {self.config.house_number}".strip()[:30]
+            etree.SubElement(dl, _u("PLZ")).text = self.config.postal_code.strip()[:5]
+            etree.SubElement(dl, _u("Ort")).text = self.config.city.strip()[:29]
             sf = etree.SubElement(anm, _u("Steuerfall"))
             ustva = etree.SubElement(sf, _u("Umsatzsteuervoranmeldung"))
             etree.SubElement(ustva, _u("Jahr")).text = str(year)
@@ -756,6 +825,15 @@ class ElsterXMLBuilder:
 
         def _int(v: Decimal) -> str:
             return str(int(v.to_integral_value(rounding=ROUND_DOWN)))
+
+        if report.has_special_vat:
+            # TODO(verify): E50 elements for 0 %, tax-free and reverse-charge amounts are
+            # not mapped — see docs/tax-rules.md row "E50 elements". Refuse rather than
+            # send an annual return that leaves them out.
+            raise NotImplementedError(
+                "Annual USt (E50) with 0 %, tax-free or reverse-charge receipts is not "
+                "supported yet: the E50 fields for them are not verified."
+            )
 
         # Compute values from report
         ln19 = report.line_19
@@ -1136,125 +1214,48 @@ class ElsterClient:
 
 
 # ---------------------------------------------------------------------------
-# E-Bilanz envelope builder (XBRL wrapped in ELSTER v12)
+# ERiC-based ELSTER client (UStVA, annual USt)
 # ---------------------------------------------------------------------------
 
 
-class EBilanzEnvelopeBuilder:
+def _druck_params(pdf_path: str | None, send: bool):
+    """ERiC print parameters for ``pdf_path`` (None: no PDF). Preview unless sending."""
+    if not pdf_path:
+        return None
+    from .eric_wrapper import make_druck_parameter
+
+    return make_druck_parameter(pdf_path, vorschau=not send)
+
+
+def _sent_despite_print_error(
+    rc: int, pdf_path: str | None, send: bool, server_xml: bytes, eric_text: str
+) -> SubmissionResult | None:
     """
-    Wraps an XBRL instance document in the ELSTER v12 transmission envelope
-    required for E-Bilanz (§ 5b EStG) submission via ERiC.
-
-    The envelope uses:
-      Verfahren  →  ElsterBilanz
-      DatenArt   →  Bilanz
-      ERiC datenartVersion  →  Bilanz_6_9  (HGB taxonomy v6, latest plugin)
+    ERiC prints *after* the server accepted the data (Entwicklerhandbuch 44.3, 5.1.2.6), and a
+    print error still makes EricBearbeiteVorgang return an error. If a PDF was requested and
+    the server response holds a Telenummer, the return **was sent**: report success with a
+    warning, so nobody sends it a second time.
     """
-
-    #: ERiC datenartVersion string that selects the Bilanz validation plugin.
-    #: Matches libcheckBilanz_6_9.dylib shipped in ERiC 43.x
-    DATENART_VERSION = "Bilanz_6_9"
-
-    def __init__(self, config: ElsterConfig) -> None:
-        if not _LXML_AVAILABLE:
-            raise ImportError(
-                "lxml is required for E-Bilanz envelope building. Install with: pip install lxml"
-            )
-        self.config = config
-
-    def build(
-        self,
-        xbrl_bytes: bytes,
-        year: int,
-        use_test: bool = True,
-    ) -> bytes:
-        """
-        Wrap *xbrl_bytes* (a valid XBRL instance) in the ELSTER envelope.
-
-        Parameters
-        ----------
-        xbrl_bytes:
-            UTF-8 encoded XBRL XML produced by ``finamt.tax.ebilanz.build_xbrl``.
-        year:
-            Fiscal year (used in the NutzdatenHeader Veranlagungszeitraum).
-        use_test:
-            True → include Testmerker 700000004 (not legally binding).
-
-        Returns
-        -------
-        UTF-8 bytes of the full Elster XML envelope ready for ERiC.
-        """
-        ticket = _make_ticket()
-        steuernr = normalise_steuernummer(self.config.steuernummer, self.config.bundesland_kz)
-        if len(steuernr) != 13:
-            raise ValueError(
-                f"Cannot normalise Steuernummer '{self.config.steuernummer}' to 13 digits. "
-                "Either pass bundesland_kz (e.g. '11' for Berlin) or supply the "
-                "13-digit ELSTER form directly (e.g. '1137053950531')."
-            )
-        # Derive bundesland_kz from the normalised steuernummer prefix if not given
-        bund_kz = self.config.bundesland_kz or steuernr[:2]
-        # BUFA = first 4 digits of the 13-digit normalised steuernummer
-        fa_nr = self.config.finanzamt_nr or steuernr[:4]
-
-        # Helper: Clark-notation tag in the ELSTER namespace
-        def _t(tag: str) -> str:
-            return f"{{{NS}}}{tag}"
-
-        root = etree.Element(_t("Elster"), nsmap={None: NS})
-
-        # ── TransferHeader ────────────────────────────────────────────
-        th = etree.SubElement(root, _t("TransferHeader"), version="11")
-        etree.SubElement(th, _t("Verfahren")).text = "ElsterBilanz"
-        etree.SubElement(th, _t("DatenArt")).text = "Bilanz"
-        etree.SubElement(th, _t("Vorgang")).text = "send-Auth"
-        etree.SubElement(th, _t("TransferTicket")).text = ticket
-        if use_test:
-            etree.SubElement(th, _t("Testmerker")).text = TESTMERKER
-        emp_th = etree.SubElement(th, _t("Empfaenger"), id="L")
-        etree.SubElement(emp_th, _t("Ziel")).text = _bundesland_ziel(bund_kz)
-        etree.SubElement(th, _t("HerstellerID")).text = self.config.hersteller_id
-        etree.SubElement(th, _t("DatenLieferant")).text = self.config.steuernummer
-        datei = etree.SubElement(th, _t("Datei"))
-        etree.SubElement(datei, _t("Verschluesselung")).text = "keine"
-        etree.SubElement(datei, _t("Kompression")).text = "keine"
-        etree.SubElement(datei, _t("TransportSchluessel"))
-
-        # ── DatenTeil ─────────────────────────────────────────────────
-        dt = etree.SubElement(root, _t("DatenTeil"))
-        ndb = etree.SubElement(dt, _t("Nutzdatenblock"))
-
-        # NutzdatenHeader
-        ndh = etree.SubElement(ndb, _t("NutzdatenHeader"), version="11")
-        etree.SubElement(ndh, _t("NutzdatenTicket")).text = ticket
-        etree.SubElement(ndh, _t("Empfaenger"), id="F").text = fa_nr
-        herst = etree.SubElement(ndh, _t("Hersteller"))
-        etree.SubElement(herst, _t("ProduktName")).text = PRODUKT_NAME
-        etree.SubElement(herst, _t("ProduktVersion")).text = PRODUKT_VERSION
-
-        # Nutzdaten — XBRL content embedded as child XML
-        nd = etree.SubElement(ndb, _t("Nutzdaten"))
-        try:
-            xbrl_tree = etree.fromstring(xbrl_bytes)
-            nd.append(xbrl_tree)
-        except etree.XMLSyntaxError as exc:
-            raise ValueError(f"Invalid XBRL XML: {exc}") from exc
-
-        return etree.tostring(root, xml_declaration=True, encoding="UTF-8", pretty_print=True)
-
-
-# ---------------------------------------------------------------------------
-# ERiC-based ELSTER client (E-Bilanz)
-# ---------------------------------------------------------------------------
+    if not (send and pdf_path and server_xml):
+        return None
+    telenummer = ElsterEricClient._extract_telenummer(server_xml)
+    if not telenummer:
+        return None
+    return SubmissionResult(
+        success=True,
+        telenummer=telenummer,
+        error_code=str(rc),
+        error_message=f"Übermittelt, aber das PDF wurde nicht erstellt: {eric_text or rc}",
+        raw_response=server_xml.decode("utf-8", errors="replace"),
+    )
 
 
 class ElsterEricClient:
     """
-    Submit an E-Bilanz (XBRL Jahresabschluss, § 5b EStG) to ELSTER via ERiC.
+    Validate and submit the UStVA and the annual USt (E50) to ELSTER via ERiC.
 
-    This class uses the official ERiC shared library (libericapi.dylib on macOS)
-    for validation and transmission.  It does NOT use the simple HTTP path used
-    by ``ElsterClient`` — ERiC is mandatory for E-Bilanz submissions.
+    This class uses the official ERiC shared library (libericapi) for validation and
+    transmission. It does NOT use the simple HTTP path used by ``ElsterClient``.
 
     Parameters
     ----------
@@ -1281,7 +1282,7 @@ class ElsterEricClient:
             eric_home="/path/to/eric/lib",
             use_test=True,
         )
-        result = client.submit_ebilanz(xbrl_bytes, year=2025)
+        result = client.validate_ust(report, year=2026, period=41)
         print(result)
     """
 
@@ -1296,7 +1297,6 @@ class ElsterEricClient:
         self.eric_home = eric_home
         self.use_test = use_test
         self.log_dir = log_dir  # None means ERiC writes no log file
-        self._builder = EBilanzEnvelopeBuilder(config)
 
         if not use_test:
             import warnings
@@ -1308,24 +1308,20 @@ class ElsterEricClient:
 
     # ------------------------------------------------------------------
 
-    def validate_ebilanz(self, xbrl_bytes: bytes, year: int) -> SubmissionResult:
-        """
-        Validate the XBRL instance via ERiC without sending to ELSTER.
-
-        Useful during development to surface any ERiC validation errors
-        before attempting a real transmission.
-        """
-        return self._run(xbrl_bytes, year, send=False)
-
     def validate_ust(
         self,
         report: USTVAReport,
         year: int,
         period: int = 0,
         is_berichtigung: bool = False,
+        pdf_path: str | None = None,
     ) -> SubmissionResult:
-        """Validate the USt/UStVA XML via ERiC without sending to ELSTER."""
-        return self._run_ust(report, year, period, is_berichtigung, send=False)
+        """
+        Validate the USt/UStVA XML via ERiC without sending to ELSTER.
+
+        ``pdf_path``: also write ERiC's print preview there (EBV-2, *** Vorschau ***).
+        """
+        return self._run_ust(report, year, period, is_berichtigung, send=False, pdf_path=pdf_path)
 
     def submit_ust(
         self,
@@ -1333,9 +1329,15 @@ class ElsterEricClient:
         year: int,
         period: int = 0,
         is_berichtigung: bool = False,
+        pdf_path: str | None = None,
     ) -> SubmissionResult:
-        """Validate and transmit the USt/UStVA to ELSTER via ERiC."""
-        return self._run_ust(report, year, period, is_berichtigung, send=True)
+        """
+        Validate and transmit the USt/UStVA to ELSTER via ERiC.
+
+        ``pdf_path``: ERiC writes the official copy there after the server accepted the data
+        (EBV-6; UStVA: Übertragungsprotokoll, USt: Freizeichnungsdokument).
+        """
+        return self._run_ust(report, year, period, is_berichtigung, send=True, pdf_path=pdf_path)
 
     def _run_ust(
         self,
@@ -1344,6 +1346,7 @@ class ElsterEricClient:
         period: int,
         is_berichtigung: bool,
         send: bool,
+        pdf_path: str | None = None,
     ) -> SubmissionResult:
         if send and not self.use_test:
             require_live_submission_allowed()
@@ -1351,6 +1354,7 @@ class ElsterEricClient:
         from pathlib import Path as _Path
 
         from .eric_wrapper import (
+            ERIC_DRUCKE,
             ERIC_SENDE,
             ERIC_VALIDIERE,
             EricBuffer,
@@ -1379,6 +1383,8 @@ class ElsterEricClient:
         flags = ERIC_VALIDIERE
         if send:
             flags |= ERIC_SENDE
+        if pdf_path:
+            flags |= ERIC_DRUCKE
 
         log_dir = self.log_dir
         if log_dir:
@@ -1409,6 +1415,7 @@ class ElsterEricClient:
                             crypto_params=cert.verschluesselungs_parameter if send else None,
                             response_buffer=resp_buf.handle(),
                             server_buffer=srv_buf.handle(),
+                            druck_params=_druck_params(pdf_path, send),
                         )
                         response_xml = resp_buf.content()
                         server_xml = srv_buf.content()
@@ -1426,6 +1433,9 @@ class ElsterEricClient:
             return SubmissionResult(success=False, error_code="ERIC_ERROR", error_message=str(exc))
 
         if rc != 0:
+            sent = _sent_despite_print_error(rc, pdf_path, send, server_xml, eric_text)
+            if sent is not None:
+                return sent
             err_msg = self._extract_eric_error(rc, response_xml, server_xml, eric_text)
             return SubmissionResult(
                 success=False,
@@ -1438,144 +1448,6 @@ class ElsterEricClient:
                 ).decode("utf-8", errors="replace"),
             )
 
-        telenummer = self._extract_telenummer(server_xml)
-        return SubmissionResult(
-            success=True,
-            telenummer=telenummer,
-            raw_response=(server_xml or b"").decode("utf-8", errors="replace"),
-        )
-
-    def submit_ebilanz(self, xbrl_bytes: bytes, year: int) -> SubmissionResult:
-        """
-        Validate and transmit the XBRL instance to ELSTER via ERiC.
-
-        Parameters
-        ----------
-        xbrl_bytes:
-            XBRL instance produced by ``finamt.tax.ebilanz.build_xbrl``.
-        year:
-            The fiscal year of the Jahresabschluss.
-
-        Returns
-        -------
-        ``SubmissionResult`` with ``success=True`` and a ``telenummer`` on success.
-        """
-        return self._run(xbrl_bytes, year, send=True)
-
-    # ------------------------------------------------------------------
-    # internals
-    # ------------------------------------------------------------------
-
-    def _run(self, xbrl_bytes: bytes, year: int, send: bool) -> SubmissionResult:
-        if send and not self.use_test:
-            require_live_submission_allowed()
-
-        from .eric_wrapper import (
-            ERIC_SENDE,
-            ERIC_VALIDIERE,
-            EricBuffer,
-            EricCertificate,
-            EricError,
-            EricSession,
-        )
-
-        # 1. Build the ELSTER envelope
-        try:
-            envelope_xml = self._builder.build(xbrl_bytes, year=year, use_test=self.use_test)
-        except Exception as exc:
-            return SubmissionResult(
-                success=False,
-                error_code="XML_BUILD_ERROR",
-                error_message=str(exc),
-            )
-
-        # 2. Prepare flags
-        flags = ERIC_VALIDIERE
-        if send:
-            flags |= ERIC_SENDE
-
-        # 3. Ensure ERiC log directory exists
-        Path(self.log_dir).mkdir(parents=True, exist_ok=True)
-
-        # 4. Invoke ERiC
-        eric_text: str = ""
-        try:
-            import contextlib as _contextlib
-
-            with EricSession(self.eric_home, log_dir=self.log_dir) as eric:
-                with EricBuffer(eric) as resp_buf, EricBuffer(eric) as srv_buf:
-                    # ERiC error 610001027: crypto_params must be NULL when
-                    # Bearbeitungsflags = VALIDIERE only (without SENDE).
-                    _cert_cm = (
-                        EricCertificate(eric, str(self.config.cert_path), self.config.cert_password)
-                        if send
-                        else _contextlib.nullcontext()
-                    )
-                    with _cert_cm as cert:
-                        rc, _th = eric.bearbeite_vorgang(
-                            xml_bytes=envelope_xml,
-                            datenart_version=EBilanzEnvelopeBuilder.DATENART_VERSION,
-                            flags=flags,
-                            crypto_params=cert.verschluesselungs_parameter if send else None,
-                            response_buffer=resp_buf.handle(),
-                            server_buffer=srv_buf.handle(),
-                        )
-                        response_xml = resp_buf.content()
-                        server_xml = srv_buf.content()
-                        if rc != 0:
-                            # Retrieve human-readable text while session is still open
-                            eric_text = eric.get_error_text(rc)
-                            # Dump validation protocol to log dir for offline inspection
-                            if response_xml:
-                                _dump = Path(self.log_dir) / "eric_response_last.xml"
-                                try:
-                                    _dump.write_bytes(response_xml)
-                                    logger.debug("ERiC response XML written to %s", _dump)
-                                except Exception:
-                                    pass
-                            logger.error(
-                                "ERiC rc=%d  eric_text=%r  response_xml=%s",
-                                rc,
-                                eric_text,
-                                response_xml.decode("utf-8", errors="replace")
-                                if response_xml
-                                else "<empty>",
-                            )
-
-        except EricError as exc:
-            return SubmissionResult(
-                success=False,
-                error_code=str(exc.code),
-                error_message=str(exc),
-            )
-        except OSError as exc:
-            return SubmissionResult(
-                success=False,
-                error_code="ERIC_LOAD_ERROR",
-                error_message=f"Could not load ERiC library from {self.eric_home}: {exc}",
-            )
-        except Exception as exc:
-            return SubmissionResult(
-                success=False,
-                error_code="ERIC_ERROR",
-                error_message=str(exc),
-            )
-
-        # 5. rc == 0 means success; non-zero is a validation / transmission error
-        if rc != 0:
-            err_msg = self._extract_eric_error(rc, response_xml, server_xml, eric_text)
-            return SubmissionResult(
-                success=False,
-                error_code=str(rc),
-                error_message=err_msg,
-                raw_response=(
-                    (response_xml or b"")
-                    + (b"\n" if response_xml and server_xml else b"")
-                    + (server_xml or b"")
-                ).decode("utf-8", errors="replace"),
-            )
-
-        # 6. Parse Transferticket (Telenummer) from server response
         telenummer = self._extract_telenummer(server_xml)
         return SubmissionResult(
             success=True,
@@ -1653,22 +1525,3 @@ class ElsterEricClient:
         if parts:
             return f"ERiC {rc}: " + " | ".join(parts)
         return f"ERiC returned code {rc}"
-
-    # ------------------------------------------------------------------
-    # Convenience: export envelope XML without sending
-    # ------------------------------------------------------------------
-
-    def export_ebilanz_xml(
-        self,
-        xbrl_bytes: bytes,
-        year: int,
-        path: str | Path,
-    ) -> Path:
-        """
-        Build the ELSTER envelope and write it to *path* without submitting.
-        Useful for manual inspection or debugging.
-        """
-        xml = self._builder.build(xbrl_bytes, year=year, use_test=self.use_test)
-        out = Path(path)
-        out.write_bytes(xml)
-        return out

@@ -552,3 +552,372 @@ class TestMain:
         mock_cls.return_value.process_receipt.return_value = _success_result(mocker)
         runner.invoke(app, ["process", "r", "--input-dir", str(tmp_path), "--db", db])
         mock_cls.assert_called_once_with(db_path=Path(db))
+
+
+# ---------------------------------------------------------------------------
+# CLI-1: eur, ustva --month, ustva --suggest-period (real temp DB, no OCR/LLM)
+# ---------------------------------------------------------------------------
+
+
+def _stored(
+    *,
+    total: str,
+    vat: str | None,
+    pct: str | None,
+    when: datetime,
+    typ: str = "sale",
+    cat: str = "services",
+    sub: str | None = None,
+):
+    import uuid
+
+    from finamt.models import Counterparty, ReceiptCategory, ReceiptData, ReceiptType
+
+    return ReceiptData(
+        raw_text=f"cli {uuid.uuid4()}",
+        receipt_type=ReceiptType(typ),
+        counterparty=Counterparty(name="Kunde GmbH"),
+        receipt_date=when,
+        total_amount=Decimal(total),
+        vat_amount=Decimal(vat) if vat is not None else None,
+        vat_percentage=Decimal(pct) if pct is not None else None,
+        category=ReceiptCategory(cat),
+        subcategory=sub,
+    )
+
+
+def _db_with(tmp_path, *receipts) -> str:
+    from finamt.storage.sqlite import SQLiteRepository
+
+    db = tmp_path / "cli.db"
+    with SQLiteRepository(db_path=db) as repo:
+        for r in receipts:
+            repo.save(r)
+    return str(db)
+
+
+class TestCliEur:
+    def test_help_lists_eur(self):
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "eur" in result.output
+
+    def test_prints_summary_and_exits_0(self, tmp_path):
+        db = _db_with(
+            tmp_path,
+            _stored(total="1190.00", vat="190.00", pct="19", when=datetime(2025, 3, 1)),
+            _stored(
+                total="119.00",
+                vat="19.00",
+                pct="19",
+                when=datetime(2025, 4, 1),
+                typ="purchase",
+                cat="software",
+            ),
+        )
+        out = tmp_path / "eur.json"
+        result = runner.invoke(app, ["eur", "--year", "2025", "--db", db, "--output", str(out)])
+        assert result.exit_code == 0, result.output
+        assert "Einnahmen-Überschuss-Rechnung" in result.output
+        assert "Kz 140" in result.output
+        import json
+
+        assert json.loads(out.read_text(encoding="utf-8"))["gewinn"] == "1071.00"
+
+    def test_review_lines_give_nonzero_exit(self, tmp_path):
+        db = _db_with(
+            tmp_path,
+            _stored(
+                total="500.00",
+                vat=None,
+                pct=None,
+                when=datetime(2025, 5, 1),
+                typ="purchase",
+                cat="donations",
+            ),
+        )
+        result = runner.invoke(app, ["eur", "--year", "2025", "--db", db])
+        assert result.exit_code == 1
+        assert "ZU PRÜFEN" in result.output
+
+    def test_no_receipts(self, tmp_path):
+        result = runner.invoke(app, ["eur", "--year", "2025", "--db", str(tmp_path / "e.db")])
+        assert result.exit_code == 1
+        assert "No receipts" in result.output
+
+    def test_kleinunternehmer_flag(self, tmp_path):
+        db = _db_with(
+            tmp_path, _stored(total="1000.00", vat=None, pct=None, when=datetime(2025, 3, 1))
+        )
+        result = runner.invoke(app, ["eur", "--year", "2025", "--db", db, "--kleinunternehmer"])
+        assert result.exit_code == 0, result.output
+        assert "Kz 111" in result.output
+
+
+class TestCliUstvaMonth:
+    def test_month_selects_only_that_month(self, tmp_path):
+        db = _db_with(
+            tmp_path,
+            _stored(total="1190.00", vat="190.00", pct="19", when=datetime(2025, 2, 10)),
+            _stored(total="238.00", vat="38.00", pct="19", when=datetime(2025, 3, 10)),
+        )
+        out_dir = tmp_path / "out"
+        result = runner.invoke(
+            app,
+            ["ustva", "--month", "2", "--year", "2025", "--db", db, "--output-dir", str(out_dir)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "2025-02-01 bis 2025-02-28" in result.output
+        assert "190.00" in result.output
+        assert (out_dir / "ustva_m02_2025.json").exists()
+
+    def test_december_bounds(self):
+        assert FinamtCLI._month_bounds(12, 2024) == (
+            datetime(2024, 12, 1).date(),
+            datetime(2024, 12, 31).date(),
+        )
+
+    def test_quarter_and_month_exclusive(self, tmp_path):
+        result = runner.invoke(
+            app, ["ustva", "--quarter", "1", "--month", "2", "--db", str(tmp_path / "x.db")]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+
+    def test_month_out_of_range(self, tmp_path):
+        result = runner.invoke(app, ["ustva", "--month", "13", "--db", str(tmp_path / "x.db")])
+        assert result.exit_code != 0
+
+    def test_default_is_q1(self, tmp_path):
+        db = _db_with(
+            tmp_path, _stored(total="119.00", vat="19.00", pct="19", when=datetime(2025, 1, 5))
+        )
+        result = runner.invoke(app, ["ustva", "--year", "2025", "--db", db])
+        assert result.exit_code == 0, result.output
+        assert "2025-01-01 bis 2025-03-31" in result.output
+
+
+class TestCliSuggestPeriod:
+    def _run(self, tmp_path, *receipts):
+        db = _db_with(tmp_path, *receipts)
+        return runner.invoke(app, ["ustva", "--suggest-period", "--year", "2025", "--db", db])
+
+    def test_monthly_above_9000(self, tmp_path):
+        # 9 000.01 € tax in 2024 → monthly
+        r = _stored(total="56368.48", vat="9000.01", pct=None, when=datetime(2024, 6, 1))
+        result = self._run(tmp_path, r)
+        assert result.exit_code == 0, result.output
+        assert "9000.01" in result.output
+        assert "monthly" in result.output
+
+    def test_exactly_9000_is_quarterly(self, tmp_path):
+        r = _stored(total="56368.47", vat="9000.00", pct=None, when=datetime(2024, 6, 1))
+        result = self._run(tmp_path, r)
+        assert "quarterly" in result.output
+        assert "monthly" not in result.output
+        assert "exemption" not in result.output
+
+    def test_exemption_at_2000(self, tmp_path):
+        r = _stored(total="12526.32", vat="2000.00", pct=None, when=datetime(2024, 6, 1))
+        result = self._run(tmp_path, r)
+        assert "quarterly" in result.output
+        assert "exemption possible" in result.output
+
+    def test_large_surplus_mentions_2a(self, tmp_path):
+        r = _stored(
+            total="66368.47",
+            vat="10000.00",
+            pct=None,
+            when=datetime(2024, 6, 1),
+            typ="purchase",
+            cat="software",
+        )
+        result = self._run(tmp_path, r)
+        assert "18 Abs. 2a" in result.output
+
+    def test_uses_prior_year_only(self, tmp_path):
+        r = _stored(total="119000.00", vat="19000.00", pct=None, when=datetime(2025, 6, 1))
+        result = self._run(tmp_path, r)
+        assert result.exit_code == 1
+        assert "Keine Belege für 2024" in result.output
+
+
+# ---------------------------------------------------------------------------
+# INV-1: finamt invoice new / list / cancel
+# ---------------------------------------------------------------------------
+
+
+class TestCliInvoice:
+    def _setup(self, tmp_path):
+        import json
+
+        from finamt.storage.sqlite import SQLiteRepository
+
+        db = tmp_path / "inv" / "finamt.db"
+        with SQLiteRepository(db_path=db) as repo:
+            repo.set_metadata(
+                "taxpayer",
+                {
+                    "name": "Erika Muster",
+                    "street": "Teststraße 1",
+                    "postcode": "80331",
+                    "city": "München",
+                    "tax_number": "143/123/45678",
+                },
+            )
+        f = tmp_path / "rechnung.json"
+        f.write_text(
+            json.dumps(
+                {
+                    "customer": {
+                        "name": "Kunde GmbH",
+                        "street": "Hauptstraße 5",
+                        "postcode": "10115",
+                        "city": "Berlin",
+                    },
+                    "issue_date": "2025-03-31",
+                    "supply_date": "2025-03-31",
+                    "lines": [
+                        {
+                            "description": "Beratung",
+                            "quantity": "2",
+                            "unit_net": "500",
+                            "vat_rate": "19",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return db, f
+
+    def test_new_list_cancel(self, tmp_path):
+        db, f = self._setup(tmp_path)
+        result = runner.invoke(app, ["invoice", "new", "--file", str(f), "--db", str(db)])
+        assert result.exit_code == 0, result.output
+        assert "Rechnung 2025-0001: 1190.00 EUR" in result.output
+        result = runner.invoke(app, ["invoice", "list", "--db", str(db)])
+        assert "2025-0001" in result.output and "Kunde GmbH" in result.output
+        result = runner.invoke(app, ["invoice", "cancel", "2025-0001", "--db", str(db)])
+        assert result.exit_code == 0, result.output
+        assert "storniert 2025-0001" in result.output
+        assert list((db.parent / "pdfs").glob("*.pdf"))
+
+    def test_incomplete_invoice_fails(self, tmp_path):
+        import json
+
+        db, f = self._setup(tmp_path)
+        data = json.loads(f.read_text(encoding="utf-8"))
+        data["customer"] = {"name": "Nur Name"}
+        f.write_text(json.dumps(data), encoding="utf-8")
+        result = runner.invoke(app, ["invoice", "new", "--file", str(f), "--db", str(db)])
+        assert result.exit_code == 1
+        assert "Leistungsempfängers fehlen" in result.output
+
+
+# ---------------------------------------------------------------------------
+# EUR-9: finamt eur --xml / --validate
+# ---------------------------------------------------------------------------
+
+
+class TestCliEurElster:
+    def _db(self, tmp_path):
+        from finamt.storage.sqlite import SQLiteRepository
+
+        db = _db_with(
+            tmp_path,
+            _stored(total="1190.00", vat="190.00", pct="19", when=datetime(2025, 3, 1)),
+        )
+        with SQLiteRepository(db_path=db) as repo:
+            repo.set_metadata(
+                "taxpayer",
+                {
+                    "name": "Erika Muster",
+                    "street": "Teststraße 1",
+                    "postcode": "80331",
+                    "city": "München",
+                    "state": "Bayern",
+                    "tax_number": "198/113/10010",
+                },
+            )
+            repo.set_metadata("elster_misc", {"hersteller_id": "12345"})
+        return db
+
+    ARGS = ["--art-des-betriebs", "IT-Beratung", "--grundstuecke", "nein"]
+
+    def test_xml_written(self, tmp_path):
+        db = self._db(tmp_path)
+        out = tmp_path / "euer.xml"
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", db, "--xml", str(out), *self.ARGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert "<E6000401>1000,00</E6000401>" in out.read_text(encoding="utf-8")
+
+    def test_validate_uses_eric(self, tmp_path, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        monkeypatch.setattr(eur_elster, "eric_validate", lambda xml, **kw: SubmissionResult(True))
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", self._db(tmp_path), "--validate", *self.ARGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert "ERiC-Prüfung ohne Fehler" in result.output
+
+    def test_validate_failure_exit_1(self, tmp_path, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        monkeypatch.setattr(
+            eur_elster,
+            "eric_validate",
+            lambda xml, **kw: SubmissionResult(False, error_code="X", error_message="kaputt"),
+        )
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", self._db(tmp_path), "--validate", *self.ARGS]
+        )
+        assert result.exit_code == 1
+        assert "kaputt" in result.output
+
+    def test_line_11_has_no_default(self, tmp_path):
+        result = runner.invoke(
+            app,
+            [
+                "eur",
+                "--year",
+                "2025",
+                "--db",
+                self._db(tmp_path),
+                "--xml",
+                str(tmp_path / "x.xml"),
+                "--art-des-betriebs",
+                "IT",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Zeile 11" in result.output
+        assert not (tmp_path / "x.xml").exists()
+
+
+class TestCliEurPdf:
+    def test_pdf_preview_implies_validate(self, tmp_path, monkeypatch):
+        from finamt.tax import eur_elster
+        from finamt.tax.elster import SubmissionResult
+
+        seen = {}
+
+        def fake(xml, pdf_path=None, **kw):
+            seen["pdf"] = pdf_path
+            Path(pdf_path).write_bytes(b"%PDF")
+            return SubmissionResult(True)
+
+        monkeypatch.setattr(eur_elster, "eric_validate", fake)
+        db = TestCliEurElster()._db(tmp_path)
+        out = tmp_path / "vorschau.pdf"
+        result = runner.invoke(
+            app, ["eur", "--year", "2025", "--db", db, "--pdf", str(out), *TestCliEurElster.ARGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert out.read_bytes() == b"%PDF"
+        assert "Druckansicht" in result.output

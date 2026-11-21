@@ -207,7 +207,8 @@ class TestGenerateEur:
             ),
         ]
         report = generate_eur(receipts, YEAR)
-        assert report.gewinn == Decimal("700.00")
+        # VAT is part of the profit (D6): 1000 + 190 (Kz 140) − 300 − 57 (Kz 185)
+        assert report.gewinn == Decimal("833.00")
 
     def test_vat_tracked_separately(self):
         receipts = [

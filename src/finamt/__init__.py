@@ -53,7 +53,6 @@ __all__ = [
     "PostingType",
     # Prompts / categories
     "RECEIPT_CATEGORIES",
-    "build_extraction_prompt",
     # Exceptions
     "FinanceAgentError",
     "OCRProcessingError",

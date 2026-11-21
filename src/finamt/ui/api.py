@@ -39,6 +39,7 @@ import asyncio
 import json
 import tempfile
 import urllib.request
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -1243,12 +1244,34 @@ class UStVASubmitRequest(BaseModel):
     cert_password: str | None = None
     use_test: bool = True
     validate_only: bool = False
+    # PRINT-1: ERiC PDF — preview (*** Vorschau ***) with validate_only, else the official
+    # copy after the send, stored next to the XML in submitted_returns/.
+    pdf: bool = False
     is_berichtigung: bool = False
     company_name: str = ""
     street: str = ""
     house_number: str = ""
     postal_code: str = ""
     city: str = ""
+
+
+def _pdf_target(layout, body, stem: str) -> str | None:
+    """Where ERiC writes the PDF (PRINT-1), or None when no PDF was asked for."""
+    if not getattr(body, "pdf", False):
+        return None
+    if body.validate_only:
+        # ERiC creates the file only when validation succeeds; just reserve a fresh name.
+        return str(Path(tempfile.gettempdir()) / f"freibuch_vorschau_{uuid.uuid4().hex}.pdf")
+    import datetime as _dtm
+
+    layout.submitted_returns_dir.mkdir(parents=True, exist_ok=True)
+    ts = _dtm.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    mode = "test" if body.use_test else "prod"
+    return str(layout.submitted_returns_dir / f"{stem}_{ts}_{mode}.pdf")
+
+
+def _pdf_result(pdf_path: str | None) -> str | None:
+    return pdf_path if pdf_path and Path(pdf_path).exists() else None
 
 
 def _ustva_period_info(
@@ -1316,6 +1339,39 @@ def get_submission_result(
     if report.total_receipts == 0 and report.einfuhr_vat == 0:
         return {"amount": None}
     return {"amount": float(-report.net_liability)}
+
+
+def _eric_home(db_path: Path) -> str:
+    """ERiC library directory for the UStVA / USt routes (decision D4, CFG-1).
+
+    ``ERIC_LIBRARY_PATH`` first; then the deprecated ``FINAMT_ERIC_HOME`` (with a
+    ``DeprecationWarning``); then the path saved in the project (Stammdaten).
+    """
+    import logging
+    import os as _os
+    import warnings
+
+    from finamt.tax.eur_elster import ERIC_LIBRARY_ENV
+
+    eric_home = _os.environ.get(ERIC_LIBRARY_ENV, "").strip()
+    if not eric_home:
+        legacy = _os.environ.get("FINAMT_ERIC_HOME", "").strip()
+        if legacy:
+            msg = f"FINAMT_ERIC_HOME is deprecated; set {ERIC_LIBRARY_ENV} instead."
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
+            logging.getLogger(__name__).warning(msg)
+            eric_home = legacy
+    if not eric_home and db_path.exists():
+        with _repo(db_path) as _r:
+            _em = _r.get_metadata("elster_eric_home") or {}
+        eric_home = (_em.get("path") or "").strip()
+    if not eric_home:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ERiC library path not configured. Set the {ERIC_LIBRARY_ENV} "
+            "environment variable.",
+        )
+    return eric_home
 
 
 @app.post("/tax/ustva/submit", tags=["tax"])
@@ -1448,35 +1504,37 @@ def post_ustva_submit(
         city=city,
     )
 
-    eric_home = _os.environ.get("FINAMT_ERIC_HOME", "")
-    if not eric_home and db_path.exists():
-        with _repo(db_path) as _r:
-            _em = _r.get_metadata("elster_eric_home") or {}
-        eric_home = _em.get("path") or ""
-    if not eric_home:
-        raise HTTPException(
-            status_code=400,
-            detail="ERiC library path not configured. Set FINAMT_ERIC_HOME environment variable.",
-        )
+    eric_home = _eric_home(db_path)
 
     eric_log_dir = str(layout.root / "eric_logs")
     client = ElsterEricClient(
         elster_cfg, eric_home=eric_home, use_test=body.use_test, log_dir=eric_log_dir
     )
 
+    _label = f"Q{body.quarter}" if body.quarter else f"M{body.month:02d}"
+    pdf_path = _pdf_target(layout, body, f"UStVA_{year}_{_label}")
     try:
         if body.validate_only:
             result = client.validate_ust(
-                report, year=year, period=eric_period, is_berichtigung=body.is_berichtigung
+                report,
+                year=year,
+                period=eric_period,
+                is_berichtigung=body.is_berichtigung,
+                pdf_path=pdf_path,
             )
             return {
                 "success": result.success,
                 "validate_only": True,
                 "message": result.error_message or "ERiC validation passed — not submitted.",
                 "error_code": result.error_code,
+                "pdf_path": _pdf_result(pdf_path),
             }
         result = client.submit_ust(
-            report, year=year, period=eric_period, is_berichtigung=body.is_berichtigung
+            report,
+            year=year,
+            period=eric_period,
+            is_berichtigung=body.is_berichtigung,
+            pdf_path=pdf_path,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -1514,6 +1572,9 @@ def post_ustva_submit(
                         "telenummer": result.telenummer,
                         "use_test": body.use_test,
                         "xml_filename": xml_filename,
+                        "pdf_filename": Path(_pdf_result(pdf_path)).name
+                        if _pdf_result(pdf_path)
+                        else None,
                     }
                 )
                 _r.set_metadata("submissions", _records)
@@ -1525,6 +1586,7 @@ def post_ustva_submit(
         "error_message": result.error_message,
         "use_test": body.use_test,
         "xml_filename": xml_filename,
+        "pdf_filename": Path(_pdf_result(pdf_path)).name if _pdf_result(pdf_path) else None,
     }
 
 
@@ -1636,6 +1698,9 @@ class UStESubmitRequest(BaseModel):
     cert_password: str | None = None
     use_test: bool = True
     validate_only: bool = False
+    # PRINT-1: ERiC PDF — preview (*** Vorschau ***) with validate_only, else the official
+    # copy after the send, stored next to the XML in submitted_returns/.
+    pdf: bool = False
     # Annual USt 2A address / tax fields
     company_name: str = ""
     street: str = ""
@@ -1787,32 +1852,25 @@ def post_uste_submit(
     )
 
     # ── ERiC home ─────────────────────────────────────────────────────
-    eric_home = _os.environ.get("FINAMT_ERIC_HOME", "")
-    if not eric_home and db_path.exists():
-        with _repo(db_path) as _r:
-            _em = _r.get_metadata("elster_eric_home") or {}
-        eric_home = _em.get("path") or ""
-    if not eric_home:
-        raise HTTPException(
-            status_code=400,
-            detail="ERiC library path not configured. Set FINAMT_ERIC_HOME environment variable.",
-        )
+    eric_home = _eric_home(db_path)
 
     eric_log_dir = str(layout.root / "eric_logs")
     client = ElsterEricClient(
         elster_cfg, eric_home=eric_home, use_test=body.use_test, log_dir=eric_log_dir
     )
 
+    pdf_path = _pdf_target(layout, body, f"USt_{year}")
     try:
         if body.validate_only:
-            result = client.validate_ust(report, year=year, period=0)
+            result = client.validate_ust(report, year=year, period=0, pdf_path=pdf_path)
             return {
                 "success": result.success,
                 "validate_only": True,
                 "message": result.error_message or "ERiC validation passed — not submitted.",
                 "error_code": result.error_code,
+                "pdf_path": _pdf_result(pdf_path),
             }
-        result = client.submit_ust(report, year=year, period=0)
+        result = client.submit_ust(report, year=year, period=0, pdf_path=pdf_path)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -1848,6 +1906,9 @@ def post_uste_submit(
                         "telenummer": result.telenummer,
                         "use_test": body.use_test,
                         "xml_filename": xml_filename,
+                        "pdf_filename": Path(_pdf_result(pdf_path)).name
+                        if _pdf_result(pdf_path)
+                        else None,
                     }
                 )
                 _r.set_metadata("submissions", _records)
@@ -1859,6 +1920,7 @@ def post_uste_submit(
         "error_message": result.error_message,
         "use_test": body.use_test,
         "xml_filename": xml_filename,
+        "pdf_filename": Path(_pdf_result(pdf_path)).name if _pdf_result(pdf_path) else None,
     }
 
 
@@ -2090,24 +2152,54 @@ def post_ebilanz_cert(body: dict = Body(...), db: str | None = Query(default=Non
 
 
 # ---------------------------------------------------------------------------
-# Static SPA (must be last)
+# FreiBuch's own server-rendered UI under /app (D2). Must come before the SPA catch-all.
+# ---------------------------------------------------------------------------
+
+from finamt.ui.web import register as _register_web_ui  # noqa: E402
+
+_register_web_ui(app)
+
+# ---------------------------------------------------------------------------
+# Start page and the old SPA (must be last)
+#
+# UI-6 (FreiBuch): "/" now opens the new UI at /app. The old compiled bundle moved to
+# /legacy-ui for one release (it has no client-side router, so its path doesn't matter);
+# its assets keep their absolute URLs (/assets/…, /finamt_icon.svg).
 # ---------------------------------------------------------------------------
 
 STATIC_DIR = Path(__file__).parent / "static"
+LEGACY_UI_PATH = "/legacy-ui"
+
+
+@app.get("/", include_in_schema=False)
+async def start_page():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse("/app", status_code=307)
+
 
 if STATIC_DIR.exists() and any(STATIC_DIR.iterdir()):
     assets_dir = STATIC_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        file_path = STATIC_DIR / full_path
-        if file_path.is_file():
-            return FileResponse(file_path)
+    @app.get(LEGACY_UI_PATH, include_in_schema=False)
+    @app.get(LEGACY_UI_PATH + "/{rest:path}", include_in_schema=False)
+    async def serve_legacy_spa(rest: str = ""):
         return FileResponse(STATIC_DIR / "index.html")
-else:
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_not_built(full_path: str):
+    async def serve_static_file(full_path: str):
+        file_path = (STATIC_DIR / full_path).resolve()
+        try:
+            file_path.relative_to(STATIC_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Not found.") from None
+        if file_path.is_file():
+            return FileResponse(file_path)
+        raise HTTPException(status_code=404, detail="Not found.")
+else:
+
+    @app.get(LEGACY_UI_PATH, include_in_schema=False)
+    async def spa_not_built():
         return {"error": "Frontend not built yet."}

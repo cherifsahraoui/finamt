@@ -770,3 +770,110 @@ class TestVatSplits:
         assert len(found.vat_splits) == 2
         rates = {s["vat_rate"] for s in found.vat_splits}
         assert rates == {19.0, 7.0}
+
+
+class TestVatTreatment:
+    """UST-3 / UST-4: why a receipt has no German VAT."""
+
+    def test_round_trip(self, repo):
+        r = _make_receipt(vat_amount=None, vat_percentage=None)
+        r.reverse_charge = True
+        repo.save(r)
+        assert repo.get(r.id).vat_treatment == "reverse_charge"
+        assert repo.get(r.id).reverse_charge is True
+
+    def test_default_none(self, repo):
+        r = _make_receipt()
+        repo.save(r)
+        assert repo.get(r.id).vat_treatment is None
+
+    def test_update(self, repo):
+        r = _make_receipt()
+        repo.save(r)
+        repo.update(r.id, {"vat_treatment": "tax_free"})
+        assert repo.get(r.id).vat_treatment == "tax_free"
+        repo.update(r.id, {"vat_treatment": ""})
+        assert repo.get(r.id).vat_treatment is None
+
+    def test_update_rejects_unknown(self, repo):
+        r = _make_receipt()
+        repo.save(r)
+        with pytest.raises(ValueError):
+            repo.update(r.id, {"vat_treatment": "nonsense"})
+
+
+# ---------------------------------------------------------------------------
+# Invoices (INV-1): tables are added in place to an existing database
+# ---------------------------------------------------------------------------
+
+
+class TestInvoiceTables:
+    def test_existing_db_gets_invoice_tables(self, tmp_path):
+        db = tmp_path / "old.db"
+        SQLiteRepository(db_path=db).close()
+        con = sqlite3.connect(db)
+        con.execute("DROP TABLE invoices")
+        con.execute("DROP TABLE invoice_sequence")
+        con.commit()
+        con.close()
+        with SQLiteRepository(db_path=db) as r:  # reopening runs the migration
+            data = r.create_invoice(
+                2025, lambda seq: {"number": f"2025-{seq:04d}", "issue_date": "2025-01-02"}
+            )
+            assert data["number"] == "2025-0001"
+            assert r.get_invoice("2025-0001")["issue_date"] == "2025-01-02"
+
+    def test_invoice_round_trip_and_receipt_link(self, repo):
+        repo.create_invoice(
+            2025,
+            lambda seq: {
+                "number": f"2025-{seq:04d}",
+                "issue_date": "2025-01-02",
+                "customer": {"name": "Kunde"},
+                "gross_total": "119.00",
+            },
+        )
+        repo.set_invoice_receipt("2025-0001", "abc")
+        [row] = repo.list_invoices(2025)
+        assert (row["number"], row["receipt_id"], row["gross_total"]) == (
+            "2025-0001",
+            "abc",
+            "119.00",
+        )
+        assert repo.list_invoices(2024) == []
+
+
+# ---------------------------------------------------------------------------
+# Asset register (EUR-3b)
+# ---------------------------------------------------------------------------
+
+
+class TestAssetRegister:
+    def test_add_and_list_round_trip(self, repo):
+        from finamt.tax.assets import COMPUTER_ONE_YEAR, LINEAR, Asset
+
+        laptop = Asset("Laptop", date(2025, 5, 3), Decimal("1499.00"), method=COMPUTER_ONE_YEAR)
+        software = Asset(
+            "Buchhaltungs-Software",
+            date(2024, 1, 10),
+            Decimal("1200.50"),
+            method=LINEAR,
+            useful_life_years=3,
+            intangible=True,
+            receipt_id="beleg-7",
+        )
+        repo.add_asset(laptop)
+        repo.add_asset(software)
+        # ordered by acquisition date; every field survives the round trip
+        assert repo.list_assets() == [software, laptop]
+
+    def test_migration_creates_table_in_existing_db(self, tmp_path):
+        db = tmp_path / "old.db"
+        first = SQLiteRepository(db_path=db)
+        first._conn.execute("DROP TABLE assets")
+        first._conn.commit()
+        first.close()
+
+        reopened = SQLiteRepository(db_path=db)
+        assert reopened.list_assets() == []
+        reopened.close()

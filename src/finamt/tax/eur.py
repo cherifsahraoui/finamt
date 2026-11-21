@@ -21,11 +21,16 @@ How receipt categories map to Kennzahlen is a classification choice (``_PURCHASE
 ``_PURCHASE_SUB_KZ``, ``_sale_kz``). Receipts that need a human decision are not guessed:
 they go to ``EURReport.review_lines`` with a reason and are **not** part of the profit.
 
+VAT (decision D6): as on the official form, VAT is part of the profit. Regelbesteuerung:
+collected VAT → Kz 140, Vorsteuer paid (business share) → Kz 185, VAT paid to the Finanzamt
+(``tax_settlement`` / ``vat_payment``) → Kz 186, VAT refunded by it (``tax_settlement`` /
+``vat_refund``) → Kz 141. Kleinunternehmer (§ 19 UStG, decision D7, ``kleinunternehmer=True``):
+every sale → Kz 111 at the gross amount received; purchases count at gross, no Kz 140/185.
+
 Known gaps (see docs/TODO.md):
-  - EUR-2: VAT is excluded from the profit (net method). The official form counts collected
-    VAT (Kz 140), refunds (Kz 141), Vorsteuer paid (Kz 185) and VAT paid to the Finanzamt
-    (Kz 186). There is no Kleinunternehmer mode (Kz 111).
-  - EUR-3: assets above the GWG limit need depreciation (AfA, Anlage AVEÜR) and are sent to review.
+  - EUR-3: assets above the GWG limit go to review unless they are in the asset register
+    (``assets=``, see ``finamt.tax.assets``); AfA then goes to Kz 130 / 131. Anlage AVEÜR and
+    a stored register are EUR-3b.
 
 Usage::
 
@@ -49,6 +54,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from ..models import ReceiptData
+from .assets import Asset, afa_for_year
 
 _TWO = Decimal("0.01")
 
@@ -76,12 +82,17 @@ def _to_date(dt: date | datetime) -> date:
 
 KZ_LABELS: dict[str, str] = {
     # Betriebseinnahmen
+    "111": "Betriebseinnahmen als Kleinunternehmer (§ 19 UStG)",
     "112": "Umsatzsteuerpflichtige Betriebseinnahmen",
     "103": "USt-freie / nicht steuerbare Betriebseinnahmen",
     "102": "Veräußerung oder Entnahme von Anlagevermögen",
+    "140": "Vereinnahmte Umsatzsteuer",
+    "141": "Vom Finanzamt erstattete Umsatzsteuer",
     # Betriebsausgaben
     "100": "Waren, Rohstoffe und Hilfsstoffe",
     "110": "Bezogene Fremdleistungen",
+    "130": "AfA auf bewegliche Wirtschaftsgüter (Anlage AVEÜR)",
+    "131": "AfA auf immaterielle Wirtschaftsgüter (Anlage AVEÜR)",
     "132": "Geringwertige Wirtschaftsgüter (§ 6 Abs. 2 EStG)",
     "150": "Miete/Pacht für Geschäftsräume",
     "151": "Sonstige Aufwendungen für betriebliche Grundstücke",
@@ -99,6 +110,8 @@ KZ_LABELS: dict[str, str] = {
     "145": "Kfz: Steuern, Versicherungen und Maut",
     "146": "Sonstige tatsächliche Fahrtkosten",
     "183": "Übrige unbeschränkt abziehbare Betriebsausgaben",
+    "185": "Gezahlte Vorsteuerbeträge",
+    "186": "An das Finanzamt gezahlte Umsatzsteuer",
 }
 
 # Purchases: category → Kennzahl (default for the category).
@@ -149,23 +162,32 @@ _PURCHASE_REVIEW: dict[tuple[str, str | None], str] = {
     ("marketing", "gifts"): "Geschenke: abziehbar / nicht abziehbar (Kz 174 / 164) prüfen",
     ("insurance", "health"): "Kranken-/Pflegeversicherung: betrieblich veranlasst? prüfen",
     ("donations", None): "Spenden: keine Zuordnung in der Anlage EÜR, manuell prüfen",
-    ("tax_settlement", None): "Steuerzahlung: USt an das Finanzamt → Kz 186 (EUR-2)",
+    ("tax_settlement", None): (
+        "Steuerzahlung: nur USt-Zahlungen (Unterkategorie vat_payment) sind Kz 186; "
+        "andere Steuern manuell prüfen"
+    ),
     ("capital_movement", None): "Einlage / Entnahme / Darlehen: kein Betriebsvorgang",
 }
 
 _SALE_REVIEW: dict[str, str] = {
-    "tax_settlement": "Steuererstattung: USt-Erstattung → Kz 141 (EUR-2)",
+    "tax_settlement": (
+        "Steuererstattung: nur USt-Erstattungen (Unterkategorie vat_refund) sind Kz 141; "
+        "andere Erstattungen manuell prüfen"
+    ),
     "capital_movement": "Einlage / Darlehen: keine Betriebseinnahme",
 }
 
 _ASSET_REVIEW_REASON = (
-    "Anlagegut über 800 € netto: Abschreibung (AfA, Anlage AVEÜR) oder Sammelposten (EUR-3)"
+    "Anlagegut über 800 € netto: Abschreibung (AfA): in das Anlageverzeichnis aufnehmen "
+    "(Nutzungsdauer oder 1-Jahres-Regel für Computer, EUR-3)"
 )
 _UNKNOWN_VAT_REASON = "USt-Status unbekannt: steuerpflichtig (Kz 112) oder steuerfrei (Kz 103)?"
 
 
 def _purchase_kz(cat: str, sub: str | None, net: Decimal) -> tuple[str, str]:
     """Return (kennzahl, review_reason) for a purchase."""
+    if (cat, sub) == ("tax_settlement", "vat_payment"):
+        return "186", ""
     reason = _PURCHASE_REVIEW.get((cat, sub)) or _PURCHASE_REVIEW.get((cat, None))
     if reason:
         return REVIEW, reason
@@ -176,12 +198,20 @@ def _purchase_kz(cat: str, sub: str | None, net: Decimal) -> tuple[str, str]:
     return _PURCHASE_KZ.get(cat, "183"), ""
 
 
-def _sale_kz(r: ReceiptData, cat: str) -> tuple[str, str]:
-    """Return (kennzahl, review_reason) for a sale (Regelbesteuerung)."""
+def _sale_kz(r: ReceiptData, cat: str, sub: str | None, kleinunternehmer: bool) -> tuple[str, str]:
+    """Return (kennzahl, review_reason) for a sale."""
+    if (cat, sub) == ("tax_settlement", "vat_refund"):
+        return "141", ""
     if cat in _SALE_REVIEW:
         return REVIEW, _SALE_REVIEW[cat]
+    if kleinunternehmer:
+        return "111", ""  # all Betriebseinnahmen of a Kleinunternehmer (EÜR guide, Zeile 12)
     if cat == "equipment":
         return "102", ""
+    if getattr(r, "vat_treatment", None):
+        # 0 % (§ 12 Abs. 3), tax-free or reverse charge (§ 13b / § 18b): EÜR Zeile 16
+        # (UST-3, UST-4; docs/tax-rules.md row "Kz 103").
+        return "103", ""
     vat, pct = r.vat_amount, r.vat_percentage
     if (vat is not None and vat != 0) or (pct is not None and pct > 0):
         return "112", ""
@@ -244,6 +274,8 @@ class EURReport:
     skipped_count: int = 0
     form_year: int = FORM_YEAR
     warnings: list[str] = field(default_factory=list)
+    #: § 19 UStG: no VAT lines; all amounts are gross (decision D7).
+    kleinunternehmer: bool = False
 
     # ------------------------------------------------------------------
     # Aggregated totals
@@ -275,24 +307,45 @@ class EURReport:
         return sum((ln.net_amount for ln in self.review_lines.values()), Decimal("0"))
 
     @property
+    def kz140_ust_vereinnahmt(self) -> Decimal:
+        """Kz 140: VAT collected on sales (0 for a Kleinunternehmer)."""
+        return Decimal("0") if self.kleinunternehmer else _r(self.total_einnahmen_ust)
+
+    @property
+    def kz185_vorsteuer(self) -> Decimal:
+        """Kz 185: Vorsteuer paid on purchases, business share (0 for a Kleinunternehmer)."""
+        return Decimal("0") if self.kleinunternehmer else _r(self.total_ausgaben_vorsteuer)
+
+    @property
+    def total_betriebseinnahmen(self) -> Decimal:
+        """All Betriebseinnahmen on the form, VAT lines included (Kz 159)."""
+        return _r(self.total_einnahmen_netto + self.kz140_ust_vereinnahmt)
+
+    @property
+    def total_betriebsausgaben(self) -> Decimal:
+        """All Betriebsausgaben on the form, VAT lines included (Kz 199)."""
+        return _r(self.total_ausgaben_netto + self.kz185_vorsteuer)
+
+    @property
     def gewinn(self) -> Decimal:
         """
-        Betriebsgewinn / -verlust (§ 4 Abs. 3 EStG) = net revenue − net expenses.
-
-        VAT is excluded (net method). The official form includes it (Kz 140/141/185/186);
-        that is task EUR-2 in docs/TODO.md.
+        Betriebsgewinn / -verlust (§ 4 Abs. 3 EStG) = Betriebseinnahmen − Betriebsausgaben,
+        VAT included as on the official form (Kz 140/141/185/186, decision D6).
         """
-        return _r(self.total_einnahmen_netto - self.total_ausgaben_netto)
+        return _r(self.total_betriebseinnahmen - self.total_betriebsausgaben)
 
     # ------------------------------------------------------------------
     # Anlage EÜR aggregated by Kennzahl
     # ------------------------------------------------------------------
 
     def kz_totals(self) -> dict[str, Decimal]:
-        """Net amounts aggregated by Kennzahl — for populating the official form."""
+        """Amounts aggregated by Kennzahl, VAT lines included — for the official form."""
         totals: dict[str, Decimal] = {}
         for ln in (*self.einnahmen_lines.values(), *self.ausgaben_lines.values()):
             totals[ln.kz] = totals.get(ln.kz, Decimal("0")) + ln.net_amount
+        for kz, amount in (("140", self.kz140_ust_vereinnahmt), ("185", self.kz185_vorsteuer)):
+            if amount != 0:
+                totals[kz] = totals.get(kz, Decimal("0")) + amount
         return {k: _r(v) for k, v in sorted(totals.items())}
 
     # ------------------------------------------------------------------
@@ -303,6 +356,7 @@ class EURReport:
         return {
             "year": self.year,
             "form_year": self.form_year,
+            "kleinunternehmer": self.kleinunternehmer,
             "skipped_count": self.skipped_count,
             "warnings": list(self.warnings),
             "total_einnahmen_netto": str(self.total_einnahmen_netto),
@@ -310,6 +364,8 @@ class EURReport:
             "total_ausgaben_netto": str(self.total_ausgaben_netto),
             "total_ausgaben_vorsteuer": str(self.total_ausgaben_vorsteuer),
             "total_review_netto": str(self.total_review_netto),
+            "total_betriebseinnahmen": str(self.total_betriebseinnahmen),
+            "total_betriebsausgaben": str(self.total_betriebsausgaben),
             "gewinn": str(self.gewinn),
             "kz_totals": {k: str(v) for k, v in self.kz_totals().items()},
             "einnahmen": {k: v.to_dict() for k, v in self.einnahmen_lines.items()},
@@ -338,20 +394,26 @@ class EURReport:
             "=" * W,
             f"  Übersprungene Belege: {self.skipped_count}",
         ]
+        if self.kleinunternehmer:
+            lines.append("  Kleinunternehmer (§ 19 UStG): Beträge brutto, keine USt-Zeilen")
         lines += [f"  ⚠  {w}" for w in self.warnings]
         lines += [div, "  BETRIEBSEINNAHMEN", div]
         for ln in sorted(self.einnahmen_lines.values(), key=lambda x: x.kz):
             lines.append(fmt(f"Kz {ln.kz}  {ln.label[:46]} ({ln.count})", ln.net_amount))
+        if self.kz140_ust_vereinnahmt != 0:
+            lines.append(fmt(f"Kz 140  {KZ_LABELS['140']}", self.kz140_ust_vereinnahmt))
         lines += [
-            fmt("Summe Betriebseinnahmen (netto)", self.total_einnahmen_netto),
+            fmt("Summe Betriebseinnahmen", self.total_betriebseinnahmen),
             div,
             "  BETRIEBSAUSGABEN",
             div,
         ]
         for ln in sorted(self.ausgaben_lines.values(), key=lambda x: x.kz):
             lines.append(fmt(f"Kz {ln.kz}  {ln.label[:46]} ({ln.count})", ln.net_amount))
+        if self.kz185_vorsteuer != 0:
+            lines.append(fmt(f"Kz 185  {KZ_LABELS['185']}", self.kz185_vorsteuer))
         lines += [
-            fmt("Summe Betriebsausgaben (netto)", self.total_ausgaben_netto),
+            fmt("Summe Betriebsausgaben", self.total_betriebsausgaben),
             "═" * W,
         ]
 
@@ -367,12 +429,8 @@ class EURReport:
                 lines.append(f"      → {ln.reason}")
 
         lines += [
-            div,
-            fmt("Vorsteuer gezahlt (→ UStVA Kz 66)", self.total_ausgaben_vorsteuer),
-            fmt("Umsatzsteuer eingenommen (→ UStVA)", self.total_einnahmen_ust),
             "=" * W,
-            "  ⚠  USt ist nicht im Gewinn enthalten (Nettomethode, siehe docs/TODO.md EUR-2).",
-            "     Vor Abgabe mit der amtlichen Anlage EÜR abgleichen.",
+            "  Vor Abgabe mit der amtlichen Anlage EÜR abgleichen.",
             "=" * W,
         ]
         return "\n".join(lines)
@@ -393,6 +451,9 @@ def _add(lines: dict[str, EURLinie], key: str, cat: str, kz: str, reason: str) -
 def generate_eur(
     receipts: Iterable[ReceiptData],
     year: int,
+    *,
+    kleinunternehmer: bool = False,
+    assets: Iterable[Asset] = (),
 ) -> EURReport:
     """
     Compute the EÜR figures from an iterable of receipts for a full fiscal year.
@@ -404,10 +465,21 @@ def generate_eur(
     otherwise ``"<category>:<kz>"`` (e.g. ``"travel:146"``). Review lines use
     ``"<category>"`` or ``"<category>/<subcategory>"``.
 
-    VAT: net amounts are used (VAT flows through UStVA). Kleinunternehmer (§ 19 UStG) are
-    not supported yet (EUR-2): their purchase VAT would have to be an expense.
+    VAT (D6): lines hold net amounts and their VAT; the report adds Kz 140 / Kz 185 from
+    the VAT. ``tax_settlement`` receipts with subcategory ``vat_payment`` (purchase) /
+    ``vat_refund`` (sale) go to Kz 186 / Kz 141 at their total amount.
+
+    ``kleinunternehmer=True`` (§ 19 UStG, D7): lines hold the gross business amount and no
+    VAT; sales go to Kz 111.
+
+    ``assets``: the asset register (EUR-3). The AfA of each asset for ``year`` goes to Kz 130 /
+    131 (also for assets bought in earlier years). A purchase receipt linked to an asset via
+    ``receipt_id`` is not an expense by itself: only its VAT is booked (Kz 185) in the year
+    of the receipt. Receipts above the GWG limit that are not linked stay in review.
     """
-    report = EURReport(year=year)
+    asset_list = list(assets)
+    asset_receipts = {a.receipt_id for a in asset_list if a.receipt_id}
+    report = EURReport(year=year, kleinunternehmer=kleinunternehmer)
     if year != FORM_YEAR:
         report.warnings.append(
             f"Kennzahlen sind für die Anlage EÜR {FORM_YEAR} geprüft, nicht für {year}."
@@ -433,15 +505,41 @@ def generate_eur(
         vat = _r(r.business_vat if r.business_vat is not None else (r.vat_amount or Decimal("0")))
         gross = _r(net + vat)
 
+        if r.is_purchase and r.id in asset_receipts:
+            # Cost is depreciated through the register; only the Vorsteuer is booked now.
+            akz = next(a.kz for a in asset_list if a.receipt_id == r.id)
+            ln = _add(report.ausgaben_lines, f"afa:{akz}", "equipment", akz, "")
+            if not kleinunternehmer:
+                ln.vat_amount += vat
+                ln.gross_amount += vat
+            continue
+
         if r.is_purchase:
             full_net = r.net_amount if r.net_amount is not None else r.total_amount
+            if kleinunternehmer:
+                # Conservative: without input-tax deduction, compare the gross cost with
+                # the GWG limit, so borderline assets go to review instead of Kz 132.
+                full_net = r.total_amount
             kz, reason = _purchase_kz(cat, sub, full_net)
             default_kz = _PURCHASE_KZ.get(cat, "183")
             lines = report.ausgaben_lines
         else:
-            kz, reason = _sale_kz(r, cat)
-            default_kz = "102" if cat == "equipment" else "112"
+            kz, reason = _sale_kz(r, cat, sub, kleinunternehmer)
+            if kleinunternehmer:
+                default_kz = "111"
+            else:
+                default_kz = "102" if cat == "equipment" else "112"
             lines = report.einnahmen_lines
+
+        if kz in ("141", "186"):
+            # A VAT payment / refund carries no VAT itself: the amount paid is the line value.
+            net, vat, gross = _r(r.total_amount), Decimal("0"), _r(r.total_amount)
+        elif kleinunternehmer:
+            # No input-tax deduction: the gross business amount is the expense / income.
+            # Taken from total_amount, since a Kleinunternehmer receipt usually has no VAT.
+            share = Decimal("1") - Decimal(str(r.private_use_share or 0))
+            gross = _r(r.total_amount * share)
+            net, vat = gross, Decimal("0")
 
         if kz == REVIEW:
             key = f"{cat}/{sub}" if sub and (cat, sub) in _PURCHASE_REVIEW else cat
@@ -453,6 +551,14 @@ def generate_eur(
         ln.vat_amount += vat
         ln.gross_amount += gross
         ln.count += 1
+
+    for a in asset_list:
+        amount = afa_for_year(a, year)
+        if amount > 0:
+            ln = _add(report.ausgaben_lines, f"afa:{a.kz}", "equipment", a.kz, "")
+            ln.net_amount += amount
+            ln.gross_amount += amount
+            ln.count += 1
 
     # Final rounding pass
     for ln in (

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Rechnungen") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Rechnungen") }} <span class="hint">{{ jahr }}</span></h1>
+{% if meldung %}<div class="notice ok">{{ _(meldung) }}</div>{% endif %}
+{% if fehler %}<div class="notice err" role="alert">{{ _(fehler) }}</div>{% endif %}
+
+<form method="get" action="{{ href('/rechnungen') }}" class="filters">
+  <input type="hidden" name="projekt" value="{{ projekt }}">
+  <label>{{ _("Jahr") }} <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
+  <button type="submit">{{ _("Anzeigen") }}</button>
+</form>
+
+{% if rechnungen %}
+<table class="list">
+  <thead><tr><th>{{ _("Nummer") }}</th><th>{{ _("Datum") }}</th><th>{{ _("Kunde") }}</th><th class="num">{{ _("Netto") }}</th><th class="num">{{ _("USt") }}</th><th class="num">{{ _("Brutto") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rechnungen %}
+    <tr>
+      <td class="mono"><a href="{{ href('/rechnungen/' ~ r.number ~ '.pdf') }}" target="_blank" rel="noopener">{{ r.number }}</a></td>
+      <td class="mono">{{ r.issue_date }}</td>
+      <td>{{ (r.customer or {}).name or "—" }}
+        {% if r.corrects %}<span class="tag warn">{{ _("Storno zu {n}", n=r.corrects) }}</span>{% endif %}
+        {% if r.number in storniert %}<span class="tag">{{ _("storniert") }}</span>{% endif %}</td>
+      <td class="num">{{ r.net_total|dezimal|eur }}</td>
+      <td class="num">{{ r.vat_total|dezimal|eur }}</td>
+      <td class="num">{{ r.gross_total|dezimal|eur }}</td>
+      <td>
+        <a href="{{ href('/rechnungen/' ~ r.number ~ '.pdf') }}" target="_blank" rel="noopener">PDF</a>
+        {% if r.receipt_id %} · <a href="{{ href('/belege/' ~ r.receipt_id) }}">{{ _("Beleg") }}</a>{% endif %}
+        {% if not r.corrects and r.number not in storniert %}
+        <form method="post" action="{{ href('/rechnungen/' ~ r.number ~ '/stornieren') }}" class="inline"
+              onsubmit="return confirm(this.dataset.frage)" data-frage="{{ _('Rechnung {n} stornieren? Es wird eine Rechnungskorrektur mit eigener Nummer erstellt.', n=r.number) }}">
+          · <button type="submit" class="link">{{ _("stornieren") }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">{{ _("Keine Rechnungen in diesem Jahr.") }}</p>
+{% endif %}
+
+<section class="card" id="neu">
+  <h2>{{ _("Neue Rechnung") }}</h2>
+  {% if absender_fehlt %}
+  <div class="notice warn">{{ _("Name und Anschrift für den Absender fehlen in den Stammdaten.") }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten öffnen") }}</a></div>
+  {% endif %}
+  {% if form_fehler %}
+  <div class="notice err" role="alert"><strong>{{ _("Rechnung nicht erstellt:") }}</strong>
+    <ul>{% for f in form_fehler %}<li>{{ _(f) }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  <form method="post" action="{{ href('/rechnungen') }}" class="grid">
+    <label class="wide">{{ _("Kunde") }} <input name="kunde_name" value="{{ form.kunde_name or '' }}"></label>
+    <label class="wide">{{ _("Straße und Hausnummer") }} <input name="kunde_strasse" value="{{ form.kunde_strasse or '' }}"></label>
+    <label>{{ _("PLZ") }} <input name="kunde_plz" value="{{ form.kunde_plz or '' }}" class="short"></label>
+    <label>{{ _("Ort") }} <input name="kunde_ort" value="{{ form.kunde_ort or '' }}"></label>
+    <label>{{ _("Land (wenn nicht Deutschland)") }} <input name="kunde_land" value="{{ form.kunde_land or '' }}"></label>
+    <label>{{ _("USt-IdNr. des Kunden (optional)") }} <input name="kunde_ustid" value="{{ form.kunde_ustid or '' }}" class="mono"></label>
+    <label>{{ _("Rechnungsdatum") }} <input type="date" name="issue_date" value="{{ form.issue_date or '' }}"></label>
+    <label>{{ _("Leistungsdatum") }} <input type="date" name="supply_date" value="{{ form.supply_date or '' }}"></label>
+    <label>{{ _("oder Leistungszeitraum von") }} <input type="date" name="supply_von" value="{{ form.supply_von or '' }}"></label>
+    <label>{{ _("bis") }} <input type="date" name="supply_bis" value="{{ form.supply_bis or '' }}"></label>
+
+    <table class="list wide positionen">
+      <thead><tr><th>{{ _("Leistung") }}</th><th class="num">{{ _("Menge") }}</th><th>{{ _("Einheit") }}</th><th class="num">{{ _("Einzelpreis netto (€)") }}</th><th>{{ _("USt-Satz") }}</th></tr></thead>
+      <tbody id="positionen">
+      {% for p in form.positionen %}
+        <tr>
+          <td><input name="pos_beschreibung" value="{{ p.beschreibung or '' }}" aria-label="{{ _('Leistung') }}"></td>
+          <td><input name="pos_menge" value="{{ p.menge or '' }}" class="num short" inputmode="decimal" placeholder="1" aria-label="{{ _('Menge') }}"></td>
+          <td><input name="pos_einheit" value="{{ p.einheit or '' }}" class="short" placeholder="{{ _('Std.') }}" aria-label="{{ _('Einheit') }}"></td>
+          <td><input name="pos_preis" value="{{ p.preis or '' }}" class="num" inputmode="decimal" aria-label="{{ _('Einzelpreis netto (€)') }}"></td>
+          <td><select name="pos_satz" aria-label="{{ _('USt-Satz') }}">{% for s in saetze %}<option value="{{ s }}" {% if p.satz == s %}selected{% endif %}>{{ s }} %</option>{% endfor %}</select></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="wide"><button type="button" class="secondary" onclick="var t=document.getElementById('positionen'); var r=t.rows[t.rows.length-1].cloneNode(true); r.querySelectorAll('input').forEach(function(i){i.value='';}); t.appendChild(r);">{{ _("+ Position") }}</button></div>
+
+    <label class="wide">{{ _("Hinweise auf der Rechnung (z. B. Zahlungsziel, Grund einer Steuerbefreiung)") }}
+      <textarea name="notes" rows="2">{{ form.notes or '' }}</textarea></label>
+    <label class="check wide"><input type="checkbox" name="kleinunternehmer" value="1" {% if form.kleinunternehmer %}checked{% endif %}> {{ _("Kleinunternehmer (§ 19 UStG): keine Umsatzsteuer ausweisen") }}</label>
+    <label class="wide">{{ _("Hinweis für Kleinunternehmer") }} <input name="kleinunternehmer_hinweis" value="{{ form.kleinunternehmer_hinweis or '' }}">
+      <span class="hint">{{ _("Wortlaut bitte prüfen (docs/tax-rules.md, Zeile „Kleinunternehmer invoice note“).") }}</span></label>
+    <div class="wide actions"><button type="submit">{{ _("Rechnung erstellen") }}</button></div>
+  </form>
+  <p class="hint">{{ _("Die Nummer (JJJJ-NNNN) wird beim Erstellen fortlaufend vergeben. Die Rechnung wird als Beleg der Art „Einnahme“ mit dem Rechnungsdatum gespeichert; geht das Geld an einem anderen Tag ein, dort das Datum ändern (EÜR: Zahlungstag).") }}</p>
+</section>
+{% endblock %}

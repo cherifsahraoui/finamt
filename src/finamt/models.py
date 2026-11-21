@@ -324,6 +324,10 @@ def _content_hash(raw_text: str) -> str:
     return hashlib.sha256(normalised.encode("utf-8")).hexdigest()
 
 
+#: Allowed values of ``ReceiptData.vat_treatment`` (see there).
+VAT_TREATMENTS: tuple[str, ...] = ("zero_rate", "tax_free", "reverse_charge")
+
+
 @dataclass
 class ReceiptData:
     """
@@ -375,8 +379,32 @@ class ReceiptData:
     # reported on the correct ELSTER line (Voranmeldung: 62; Jahreserklärung: 124).
     einfuhr_vat: Decimal | None = None
 
+    # vat_treatment — why a receipt carries no German VAT (UST-3, UST-4).
+    # None = ordinary receipt (VAT at ``vat_percentage``). Otherwise one of
+    # ``VAT_TREATMENTS``: "zero_rate" (§ 12 Abs. 3 UStG, UStVA Kz 87),
+    # "tax_free" (UStVA Kz 48), "reverse_charge" (§ 13b / § 18b UStG,
+    # Kz 21 / 60 for sales, Kz 46/47 or 84/85 plus Kz 67 for purchases).
+    # Never inferred from the amount: a 0 % receipt without a reason is reported
+    # as a warning. See docs/tax-rules.md.
+    vat_treatment: str | None = None
+
     def __post_init__(self) -> None:
         self.id = _content_hash(self.raw_text)
+        if self.vat_treatment is not None and self.vat_treatment not in VAT_TREATMENTS:
+            raise ValueError(f"unknown vat_treatment: {self.vat_treatment!r}")
+
+    @property
+    def reverse_charge(self) -> bool:
+        """True when the recipient owes the VAT (§ 13b UStG) or the service is not taxable
+        in Germany under § 3a Abs. 2 / § 18b UStG (EU B2B)."""
+        return self.vat_treatment == "reverse_charge"
+
+    @reverse_charge.setter
+    def reverse_charge(self, value: bool) -> None:
+        if value:
+            self.vat_treatment = "reverse_charge"
+        elif self.vat_treatment == "reverse_charge":
+            self.vat_treatment = None
 
     # ------------------------------------------------------------------
     # Derived helpers
@@ -609,6 +637,7 @@ class ReceiptData:
             "einfuhr_vat": float(self.einfuhr_vat)
             if getattr(self, "einfuhr_vat", None) is not None
             else None,
+            "vat_treatment": getattr(self, "vat_treatment", None),
         }
 
     def to_json(self) -> str:

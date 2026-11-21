@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ _("EÜR") }} {{ jahr }}{% endblock %}
+{% block content %}
+<h1>{{ _("Einnahmenüberschussrechnung") }} <span class="hint">{{ jahr }}</span></h1>
+
+<form method="get" action="{{ href('/euer') }}" class="filters">
+  <input type="hidden" name="projekt" value="{{ projekt }}">
+  <label>{{ _("Jahr") }} <input type="number" name="jahr" value="{{ jahr }}" min="2000" max="2100" class="short"></label>
+  <button type="submit">{{ _("Anzeigen") }}</button>
+  <a class="button secondary" href="{{ href('/euer/' ~ jahr ~ '.json') }}">{{ _("JSON herunterladen") }}</a>
+</form>
+
+{% if ergebnis %}
+<div class="notice {{ 'ok' if ergebnis.success else 'err' }}" role="status">
+  {% if ergebnis.success %}
+    {% if ergebnis.aktion == "pruefen" %}{{ _("ERiC-Prüfung ohne Fehler. Nichts gesendet.") }}
+    {% else %}{{ _("Testfall gesendet (Testmerker; ELSTER löscht ihn).") }}{% if ergebnis.telenummer %} {{ _("Telenummer") }} {{ ergebnis.telenummer }}.{% endif %}{% endif %}
+  {% else %}
+    {% if ergebnis.nicht_erstellt %}{{ _("Anlage EÜR nicht erstellt:") }}{% else %}{{ _("Nicht übermittelt:") }}{% endif %}
+    {{ _(ergebnis.message) or _("unbekannter Fehler") }}{% if ergebnis.error_code %} ({{ _("Code") }} {{ ergebnis.error_code }}){% endif %}
+  {% endif %}
+</div>
+{% endif %}
+{% for w in report.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
+{% if stnr.fehler %}
+<div class="notice warn">{{ _("Steuernummer für die Anlage EÜR:") }} {{ _(stnr.fehler) }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten öffnen") }}</a></div>
+{% else %}
+<p class="hint">{{ _("Abgabe unter Steuernummer") }} <span class="mono">{{ stnr.elster13 }}</span> ({{ _("Finanzamt") }} {{ stnr.finanzamt_nr }}).</p>
+{% endif %}
+
+<div class="split">
+  <section class="card">
+    <h2>{{ _("Betriebseinnahmen") }}</h2>
+    {% if report.einnahmen_lines %}
+    <table class="kv">
+      {% for ln in report.einnahmen_lines.values()|sort(attribute="kz") %}
+      <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
+      {% endfor %}
+      {% if report.kz140_ust_vereinnahmt %}<tr><th><span class="mono">140</span> Vereinnahmte Umsatzsteuer</th><td class="num">{{ report.kz140_ust_vereinnahmt|eur }}</td></tr>{% endif %}
+      <tr class="total"><th>{{ _("Summe") }}</th><td class="num">{{ report.total_betriebseinnahmen|eur }}</td></tr>
+    </table>
+    {% else %}<p class="empty">{{ _("Keine Einnahmen.") }}</p>{% endif %}
+
+    <h2>{{ _("Betriebsausgaben") }}</h2>
+    {% if report.ausgaben_lines %}
+    <table class="kv">
+      {% for ln in report.ausgaben_lines.values()|sort(attribute="kz") %}
+      <tr><th><span class="mono">{{ ln.kz }}</span> {{ ln.label }} <span class="hint">({{ ln.count }})</span></th><td class="num">{{ ln.net_amount|eur }}</td></tr>
+      {% endfor %}
+      {% if report.kz185_vorsteuer %}<tr><th><span class="mono">185</span> Gezahlte Vorsteuerbeträge</th><td class="num">{{ report.kz185_vorsteuer|eur }}</td></tr>{% endif %}
+      <tr class="total"><th>{{ _("Summe") }}</th><td class="num">{{ report.total_betriebsausgaben|eur }}</td></tr>
+    </table>
+    {% else %}<p class="empty">{{ _("Keine Ausgaben.") }}</p>{% endif %}
+
+    <table class="kv result">
+      <tr class="total"><th>{{ _("Gewinn (ohne „zu prüfen“)") }}</th><td class="num">{{ report.gewinn|eur }}</td></tr>
+    </table>
+    {% if report.kleinunternehmer %}<p class="hint">{{ _("Kleinunternehmer (§ 19 UStG): Bruttobeträge, keine Umsatzsteuer-Zeilen.") }}</p>
+    {% else %}<p class="hint">{{ _("Kategorien netto; die Umsatzsteuer steht in Kz 140 / 185, Zahlungen an und Erstattungen vom Finanzamt in Kz 186 / 141.") }}</p>{% endif %}
+    {% if lang != "de" %}<p class="hint">{{ _("Die Zeilentexte folgen dem amtlichen Formular und bleiben deutsch.") }}</p>{% endif %}
+  </section>
+
+  <section class="card {% if zu_pruefen %}accent{% endif %}">
+    <h2>{{ _("ZU PRÜFEN") }}</h2>
+    {% if zu_pruefen %}
+    <p>{{ _("Diese Belege sind nicht im Gewinn, bis du entschieden hast ({betrag} netto).", betrag=(report.total_review_netto|eur)) }}</p>
+    <table class="list">
+      <thead><tr><th>{{ _("Datum") }}</th><th>{{ _("Partner") }}</th><th class="num">{{ _("Netto") }}</th><th>{{ _("Grund") }}</th></tr></thead>
+      <tbody>
+      {% for r, zeile in zu_pruefen %}
+        <tr>
+          <td class="mono"><a href="{{ href('/belege/' ~ r.id) }}">{{ r.receipt_date|datum }}</a></td>
+          <td><a href="{{ href('/belege/' ~ r.id) }}">{{ r.vendor or "—" }}</a></td>
+          <td class="num">{{ r.net_amount|eur }}</td>
+          <td>{{ zeile.reason }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="ok">{{ _("Nichts offen.") }}</p>{% endif %}
+  </section>
+</div>
+
+<section class="card" id="elster">
+  <h2>{{ _("An ELSTER (Anlage EÜR {jahr})", jahr=form_year) }}</h2>
+  {% if jahr != form_year %}
+  <p class="hint">{{ _("Geprüft ist nur das Formular {jahr}. Für andere Jahre wird keine Anlage EÜR erstellt (YEAR-1).", jahr=form_year) }}</p>
+  {% else %}
+  <form method="post" action="{{ href('/euer') }}" class="grid">
+    <input type="hidden" name="jahr" value="{{ jahr }}">
+    <label>{{ _("Art des Betriebs") }} <input name="art_des_betriebs" maxlength="25" value="{{ elster.art_des_betriebs }}" placeholder="{{ _('z. B. IT-Beratung') }}"></label>
+    <fieldset class="sub">
+      <legend>{{ _("Zeile 11: Grundstücke oder grundstücksgleiche Rechte entnommen oder veräußert?") }}</legend>
+      <label class="check"><input type="radio" name="grundstuecke" value="nein" {% if elster.grundstuecke == "nein" %}checked{% endif %}> {{ _("nein") }}</label>
+      <label class="check"><input type="radio" name="grundstuecke" value="ja" {% if elster.grundstuecke == "ja" %}checked{% endif %}> {{ _("ja") }}</label>
+    </fieldset>
+    <label>{{ _("Entnahmen (€, Zeile 106)") }} <input name="entnahmen" class="num" inputmode="decimal" value="{{ elster.entnahmen }}" placeholder="0,00"></label>
+    <label>{{ _("Einlagen (€, Zeile 107)") }} <input name="einlagen" class="num" inputmode="decimal" value="{{ elster.einlagen }}" placeholder="0,00"></label>
+    <div class="wide actions">
+      <button type="submit" name="aktion" value="pruefen">{{ _("Mit ERiC prüfen") }}</button>
+      <button type="submit" name="aktion" value="xml" class="secondary">{{ _("XML herunterladen") }}</button>
+      <button type="submit" name="aktion" value="vorschau" class="secondary" formtarget="_blank">{{ _("Druckansicht (PDF)") }}</button>
+      <button type="submit" name="aktion" value="test">{{ _("Testfall senden") }}</button>
+    </div>
+  </form>
+  <p class="hint">{{ _("Verbindliches Senden der Anlage EÜR ist in FreiBuch abgeschaltet (Entscheidung D3). Steuernummer, Hersteller-ID, Zertifikat und ERiC-Pfad kommen aus den Stammdaten:") }} <a href="{{ href('/stammdaten') }}">{{ _("Stammdaten") }}</a></p>
+  {% endif %}
+</section>
+{% endblock %}

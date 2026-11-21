@@ -255,7 +255,10 @@ class TestEricSession:
                     flags=ERIC_VALIDIERE | ERIC_SENDE,
                 )
                 assert rc == 0
-                assert th is not None  # transfer handle returned
+                # ERiC 44 removed the transfer handle (Releasenotes 5.2.6): the C call
+                # takes 7 arguments and no handle is returned.
+                assert th is None
+                assert len(lib.EricBearbeiteVorgang.call_args.args) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -330,3 +333,45 @@ class TestEricCertificate:
                     pass
                 assert cert._handle is None
                 assert cert.verschluesselungs_parameter is None
+
+
+class TestDruckParameter:
+    """PRINT-1: eric_druck_parameter_t as the ERiC 44.3 API reference describes it."""
+
+    def test_preview(self):
+        from finamt.tax.eric_wrapper import make_druck_parameter
+
+        p = make_druck_parameter("out.pdf", vorschau=True)
+        assert (p.version, p.vorschau, p.duplexDruck) == (4, 1, 0)
+        assert p.pdfName == b"out.pdf"
+        assert p.fussText is None
+        assert not p.pdfCallback  # NULL: ERiC writes the file
+
+    def test_send_and_footer(self):
+        from finamt.tax.eric_wrapper import make_druck_parameter
+
+        p = make_druck_parameter("out.pdf", vorschau=False, fuss_text="FreiBuch")
+        assert p.vorschau == 0
+        assert p.fussText == b"FreiBuch"
+
+    def test_path_in_ansi_codepage_on_windows(self, monkeypatch):
+        import os
+
+        from finamt.tax import eric_wrapper
+
+        if os.name != "nt":
+            pytest.skip("mbcs codec exists only on Windows")
+        assert eric_wrapper._pdf_path_bytes("Ä.pdf") == "Ä.pdf".encode("mbcs")
+
+    def test_druck_params_passed_by_reference(self):
+        from finamt.tax.eric_wrapper import make_druck_parameter
+
+        session = EricSession.__new__(EricSession)
+        session._lib = MagicMock()
+        session._lib.EricBearbeiteVorgang.return_value = 0
+        p = make_druck_parameter("out.pdf", vorschau=True)
+        session.bearbeite_vorgang(b"<x/>", "UStVA_2026", 34, druck_params=p)
+        args = session._lib.EricBearbeiteVorgang.call_args[0]
+        assert args[3] is not None
+        session.bearbeite_vorgang(b"<x/>", "UStVA_2026", 2)
+        assert session._lib.EricBearbeiteVorgang.call_args[0][3] is None
