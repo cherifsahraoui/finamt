@@ -417,12 +417,13 @@ class FinamtCLI:
         with get_repository(db_path) as repo:
             receipts = list(repo.find_by_period(date(year, 1, 1), date(year, 12, 31)))
             meta = {k: repo.get_metadata(k) or {} for k in ("taxpayer", "elster_misc")}
+            assets = repo.list_assets()
 
         if not receipts:
             print(f"No receipts found for {year}.")
             return 1
 
-        report = generate_eur(receipts, year, kleinunternehmer=kleinunternehmer)
+        report = generate_eur(receipts, year, kleinunternehmer=kleinunternehmer, assets=assets)
         print(report.summary())
 
         if output:
@@ -436,12 +437,20 @@ class FinamtCLI:
             )
             return 1
         if xml or validate or pdf:
-            return self._eur_elster(report, meta, xml, validate or bool(pdf), elster or {}, pdf)
+            return self._eur_elster(
+                report, meta, xml, validate or bool(pdf), elster or {}, pdf, assets
+            )
         return 0
 
     @staticmethod
     def _eur_elster(
-        report, meta: dict, xml_out: Path | None, validate: bool, e: dict, pdf: Path | None = None
+        report,
+        meta: dict,
+        xml_out: Path | None,
+        validate: bool,
+        e: dict,
+        pdf: Path | None = None,
+        assets=(),
     ) -> int:
         from finamt.tax import eur_elster
         from finamt.ui.web.helpers import eur_taxpayer
@@ -459,6 +468,7 @@ class FinamtCLI:
                 entnahmen=e.get("entnahmen") or Decimal("0"),
                 einlagen=e.get("einlagen") or Decimal("0"),
                 hersteller_id=(meta["elster_misc"].get("hersteller_id") or "").strip(),
+                assets=assets,
             )
         except (ValueError, NotImplementedError) as exc:
             print(f"✗  Anlage EÜR nicht erstellt: {exc}", file=sys.stderr)
@@ -749,6 +759,68 @@ def cmd_eur(
 
 invoice_app = typer.Typer(help="Outgoing invoices (§ 14 UStG) with gapless numbers.")
 app.add_typer(invoice_app, name="invoice")
+
+assets_app = typer.Typer(help="Asset register for the AfA (EÜR Kz 130 / 131, Anlage AVEÜR).")
+app.add_typer(assets_app, name="assets")
+
+
+@assets_app.command("add")
+def cmd_assets_add(
+    description: Annotated[str, typer.Option("--description", help="Bezeichnung, e.g. Laptop.")],
+    acquired: Annotated[str, typer.Option("--acquired", help="Acquisition date, YYYY-MM-DD.")],
+    cost: Annotated[str, typer.Option("--cost", help="Net cost in EUR, e.g. 1499.00.")],
+    method: Annotated[
+        str,
+        typer.Option(
+            "--method",
+            help="linear (life from the AfA table) or computer_one_year (BMF 22.02.2022).",
+        ),
+    ] = "linear",
+    life: Annotated[
+        int | None, typer.Option("--life", help="Useful life in years (linear).")
+    ] = None,
+    intangible: Annotated[
+        bool, typer.Option("--intangible", help="Intangible asset (Kz 131), e.g. software.")
+    ] = False,
+    receipt_id: Annotated[
+        str | None, typer.Option("--receipt-id", help="Id of the linked purchase receipt.")
+    ] = None,
+    db: Annotated[Path | None, DbOpt] = None,
+) -> None:
+    """Add an asset to the register. The AfA is computed from it for the EÜR."""
+    from finamt.tax.assets import Asset
+
+    try:
+        asset = Asset(
+            description=description,
+            acquisition_date=date.fromisoformat(acquired),
+            cost=Decimal(cost),
+            method=method,
+            useful_life_years=life,
+            intangible=intangible,
+            receipt_id=receipt_id,
+        )
+    except (ValueError, ArithmeticError) as exc:
+        print(f"✗  {exc}", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    with get_repository(db or DEFAULT_DB_PATH) as repo:
+        repo.add_asset(asset)
+    print(f"✓  {asset.description}: {asset.cost:.2f} EUR, {asset.method}, Kz {asset.kz}")
+
+
+@assets_app.command("list")
+def cmd_assets_list(db: Annotated[Path | None, DbOpt] = None) -> None:
+    """List the asset register."""
+    with get_repository(db or DEFAULT_DB_PATH) as repo:
+        assets = repo.list_assets()
+    if not assets:
+        print("No assets in the register.")
+        return
+    for a in assets:
+        print(
+            f"{a.acquisition_date.isoformat()}  {a.cost:>10.2f} EUR  Kz {a.kz}  "
+            f"{a.method:<18}  {a.useful_life_years or 1:>2} J.  {a.description}"
+        )
 
 
 def _pdf_dir_for(db_path: Path) -> Path:

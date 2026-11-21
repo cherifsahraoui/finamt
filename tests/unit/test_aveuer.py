@@ -168,3 +168,72 @@ class TestAnlageAveuer:
                 test=False,
                 assets=assets,
             )
+
+
+class TestAssetsCli:
+    """`finamt assets add / list` writes to and reads from the project DB (tmp_path here)."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        return tmp_path / "assets.db"
+
+    def _run(self, *args):
+        from typer.testing import CliRunner
+
+        from finamt.cli import app
+
+        return CliRunner().invoke(app, list(args))
+
+    def test_add_then_list(self, db):
+        added = self._run(
+            "assets",
+            "add",
+            "--description",
+            "Laptop",
+            "--acquired",
+            "2025-05-03",
+            "--cost",
+            "1499.00",
+            "--method",
+            "computer_one_year",
+            "--db",
+            str(db),
+        )
+        assert added.exit_code == 0, added.output
+        assert "Kz 130" in added.output
+
+        listed = self._run("assets", "list", "--db", str(db))
+        assert listed.exit_code == 0, listed.output
+        assert "1499.00 EUR" in listed.output and "Laptop" in listed.output
+
+    def test_invalid_cost_is_refused(self, db):
+        result = self._run(
+            "assets",
+            "add",
+            "--description",
+            "Laptop",
+            "--acquired",
+            "2025-05-03",
+            "--cost",
+            "1,5",
+            "--method",
+            "computer_one_year",
+            "--db",
+            str(db),
+        )
+        assert result.exit_code == 1
+
+    def test_linear_without_life_is_refused(self, db):
+        result = self._run(
+            "assets",
+            "add",
+            "--description",
+            "Schreibtisch",
+            "--acquired",
+            "2025-05-03",
+            "--cost",
+            "800.00",
+            "--db",
+            str(db),
+        )
+        assert result.exit_code == 1

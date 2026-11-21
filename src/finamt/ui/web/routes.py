@@ -155,6 +155,12 @@ def _receipts(layout, start: date | None = None, end: date | None = None) -> lis
         return list(repo.list_all())
 
 
+def _assets(layout) -> list:
+    """The project's asset register (EUR-3b): AfA for the EÜR and the Anlage AVEÜR."""
+    with h.open_repo(layout) as repo:
+        return [] if repo is None else repo.list_assets()
+
+
 def _sort(receipts: list) -> list:
     return sorted(receipts, key=lambda r: r.receipt_date or datetime.min, reverse=True)
 
@@ -181,7 +187,10 @@ def uebersicht(request: Request, projekt: str | None = None):
 
     jahr_receipts = _receipts(layout, date(heute.year, 1, 1), date(heute.year, 12, 31))
     eur = generate_eur(
-        jahr_receipts, heute.year, kleinunternehmer=_kleinunternehmer(layout, heute.year)
+        jahr_receipts,
+        heute.year,
+        kleinunternehmer=_kleinunternehmer(layout, heute.year),
+        assets=_assets(layout),
     )
     mit_warnung = [r for r in jahr_receipts if r.validation_warnings]
 
@@ -731,7 +740,9 @@ def _euer_context(layout, jahr: int, elster: dict | None = None, ergebnis: dict 
     from finamt.tax.eur import FORM_YEAR
 
     receipts = _receipts(layout, date(jahr, 1, 1), date(jahr, 12, 31))
-    report = generate_eur(receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr))
+    report = generate_eur(
+        receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr), assets=_assets(layout)
+    )
     zu_pruefen = []
     for r in _sort(receipts):
         zeile = h.eur_zeile(r)
@@ -805,7 +816,12 @@ def euer_elster(
         ein = h.parse_betrag(einlagen) or Decimal("0")
         report = _euer_context(layout, jahr)["report"]
         xml = eur_elster.build_xml(
-            report, taxpayer, entnahmen=ent, einlagen=ein, hersteller_id=hersteller_id
+            report,
+            taxpayer,
+            entnahmen=ent,
+            einlagen=ein,
+            hersteller_id=hersteller_id,
+            assets=_assets(layout),
         )
     except (ValueError, NotImplementedError) as exc:
         return fertig({"success": False, "message": str(exc), "nicht_erstellt": True})
@@ -861,7 +877,9 @@ def euer_elster(
 def euer_json(jahr: int, projekt: str | None = None):
     layout = h.resolve(projekt)
     receipts = _receipts(layout, date(jahr, 1, 1), date(jahr, 12, 31))
-    body = generate_eur(receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr)).to_json()
+    body = generate_eur(
+        receipts, jahr, kleinunternehmer=_kleinunternehmer(layout, jahr), assets=_assets(layout)
+    ).to_json()
     return Response(
         body,
         media_type="application/json",
